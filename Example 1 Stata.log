@@ -1,0 +1,1829 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\Example 1.log
+  log type:  text
+ opened on:   6 Sep 2024, 17:18:17
+
+. 
+. *******************************
+. *Example 1: UEA COVID datathon
+. *Growth model of depression
+. ********************************
+. 
+. *Some illustrative code for:
+. *Depression and anxiety in people with cognitive impairment and dementia during the COVID-19 pandemic: Analysis of the English Longitudinal Study of Ageing. 
+. *PLoS Med 20(4): e1004162.
+. 
+. **************************************************************
+. *Datasets used:
+. *SN 5050: Main ELSA study (Harmonized version): h_elsa_g3.dta
+. *SN 5050: Main ELSA study: wave_9_elsa_data_eul_v1.dta
+. *SN 8688 COVID wave 1: elsa_covid_w1_eulv2.dta
+. *SN 8688 COVID wave 2: elsa_covid_w2_eulv2.dta
+. **************************************************************
+. 
+. *Use of a growth model to examine whether changes in depression were associated with cognitive impairment.
+. 
+. *Dependent variable: depression (CESD) score at 3 time points (pre-pandemic wave 9, and both waves of the COVID-19 sub-study)
+. 
+. *Main Independent variables: measurement wave and cognitive function status (assessed in the paper using an algorithm, including HCAP data).
+. *(Pre-pandemic) confounders: demographics, SES, health, geography (e.g. region)
+. 
+. *Statistical analysis:
+. 
+. *Here we provide Stata code to estimate a multilevel / mixed effects linear regression model 
+. *to estimate change in depression across 3 cognitive function groups (no impairment; mild impairment; dementia).
+. *We also include code to demonstrate use of multiple imputation to fill in missing values on 1 or 2 depression items 
+. *(especially important for COVID 1 data, where 1 item is missing for 75%+)
+. 
+. *Note that here we do not use the exact dementia algorithm used in this paper. It is not replicable using archived data.
+. *So we illustrate here using a combination of Wave 9 cognitive function (CF) data (memory scores); and doctor-diagnosed dementia. 
+. *Therefore please note: this is just an illustration.
+. 
+. 
+. *********************
+. *Wave 9 (SN 5050).
+. *********************
+. 
+. clear all
+
+. clear
+
+. set maxvar 15000
+
+
+. set seed 579503
+
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\ELSA-5050\stata\wave_9_elsa_data_eul_v1.dta"
+
+. keep idauniq finstat psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh indager indsex GOR fqethnmr couple cflisen cflisd
+
+. 
+. ***Cognitive function status at wave9.
+. 
+. ***Match in variables for doctor-diagnosed dementia and alzheimer's disease from the Harmonized ELSA data (available: SN 5050)
+. ***which uses information from previous waves.
+. 
+. sort idauniq
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\ELSA-5050\stata\h_elsa_g3.dta", keepusing(r9demene r9alzhe)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                        11,066
+        from master                         0  (_merge==1)
+        from using                     11,066  (_merge==2)
+
+    Matched                             8,736  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2 // do not add observations: only columns.
+(11,066 observations deleted)
+
+. drop _m
+
+. tab1 r9demene r9alzhe    // ever had dementia/Alzheimer's.
+
+-> tabulation of r9demene  
+
+    r9demene:w9 r ever had dementia |      Freq.     Percent        Cum.
+------------------------------------+-----------------------------------
+                               0.no |      8,548       97.85       97.85
+                              1.yes |        188        2.15      100.00
+------------------------------------+-----------------------------------
+                              Total |      8,736      100.00
+
+-> tabulation of r9alzhe  
+
+  r9alzhe:w9 r ever had alzheimer's |      Freq.     Percent        Cum.
+------------------------------------+-----------------------------------
+                               0.no |      8,677       99.32       99.32
+                              1.yes |         59        0.68      100.00
+------------------------------------+-----------------------------------
+                              Total |      8,736      100.00
+
+. 
+. ***Memory scores (immediate- and delayed- word recall).
+. ***higher scores = better memory.
+. mvdecode cflisen cflisd,mv(-9/-1)         // set to missing
+     cflisen: 600 missing values generated
+      cflisd: 552 missing values generated
+
+. summ cflisen cflisd
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+     cflisen |      8,136    6.026794    1.771528          0         10
+      cflisd |      8,184    4.670577      2.1467          0         10
+
+. gen cfw9=cflisen + cflisd                 // sum the immediate and delayed scores.
+(601 missing values generated)
+
+. summ cfw9
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+        cfw9 |      8,135    10.72477    3.646083          0         20
+
+. tab1 cfw9
+
+-> tabulation of cfw9  
+
+       cfw9 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |         76        0.93        0.93
+          1 |         39        0.48        1.41
+          2 |         66        0.81        2.22
+          3 |        114        1.40        3.63
+          4 |        185        2.27        5.90
+          5 |        236        2.90        8.80
+          6 |        301        3.70       12.50
+          7 |        399        4.90       17.41
+          8 |        592        7.28       24.68
+          9 |        714        8.78       33.46
+         10 |        914       11.24       44.70
+         11 |        933       11.47       56.16
+         12 |        949       11.67       67.83
+         13 |        832       10.23       78.06
+         14 |        672        8.26       86.32
+         15 |        420        5.16       91.48
+         16 |        356        4.38       95.86
+         17 |        137        1.68       97.54
+         18 |        131        1.61       99.15
+         19 |         26        0.32       99.47
+         20 |         43        0.53      100.00
+------------+-----------------------------------
+      Total |      8,135      100.00
+
+. 
+. *Group the w9 memory score into high; medium; low (arbitrary cut-offs).
+. generate cf_g3w9 = 1 if inrange(cfw9,8,20)
+(2,017 missing values generated)
+
+. replace cf_g3w9 = 2 if inrange(cfw9,6,7)
+(700 real changes made)
+
+. replace cf_g3w9 = 3 if inrange(cfw9,0,5)
+(716 real changes made)
+
+. label define cflbl 1 "no impairment" 2 "mild-impairment" 3 "dementia"
+
+. label values cf_g3w9 cflbl
+
+. tab1 cf_g3w9
+
+-> tabulation of cf_g3w9  
+
+        cf_g3w9 |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+  no impairment |      6,719       82.59       82.59
+mild-impairment |        700        8.60       91.20
+       dementia |        716        8.80      100.00
+----------------+-----------------------------------
+          Total |      8,135      100.00
+
+. 
+. *Assign those with diagnosed condition into the third group (irrespective of memory score)
+. replace cf_g3w9=3 if (r9demene==1)|(r9alzhe==1)
+(140 real changes made)
+
+. tab1 cf_g3w9, m
+
+-> tabulation of cf_g3w9  
+
+        cf_g3w9 |      Freq.     Percent        Cum.
+----------------+-----------------------------------
+  no impairment |      6,701       76.71       76.71
+mild-impairment |        688        7.88       84.58
+       dementia |        856        9.80       94.38
+              . |        491        5.62      100.00
+----------------+-----------------------------------
+          Total |      8,736      100.00
+
+. replace cf_g3w9=1 if cf_g3w9==.    // not imputing CF status in Stata (just use mode)
+(491 real changes made)
+
+. 
+. *Numeric variable for region to match paper.
+. gen region=1 if GOR=="E12000001"|GOR=="E12000002"|GOR=="E12000003"
+(6,288 missing values generated)
+
+. replace region=2 if GOR=="E12000004"|GOR=="E12000005"
+(1,859 real changes made)
+
+. replace region=3 if GOR=="E12000006"|GOR=="E12000007"
+(1,862 real changes made)
+
+. replace region=4 if GOR=="E12000008"|GOR=="E12000009"|GOR=="S92000003"|GOR=="W92000004"
+(2,564 real changes made)
+
+. label define gorlbl 1 "North" 2 "Midlands" 3 "London and East" 4 "South"
+
+. label values region gorlbl
+
+. 
+. 
+. *Keep core members only (decided here to use Cohorts 1, 3 and 4).
+. keep if inlist(finstat,1,7,14)
+(3,081 observations deleted)
+
+. tab1 finstat
+
+-> tabulation of finstat  
+
+            (D) W9 final finstat status |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                                   C1CM |      3,660       64.72       64.72
+                                   C3CM |        688       12.17       76.89
+                                   C4CM |      1,307       23.11      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      5,655      100.00
+
+. 
+. ************************************************************************************
+. *CESD scale.
+. *Deriving a depression score is not a simple task due to need for reverse coding.
+. *high score to indicate depression
+. *items d (happy) and f (enjoyed life) coded differently to others.
+. ************************************************************************************
+. 
+. *tab1 psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+. mvdecode psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh,mv(-9/-1)              // set to missing (.)
+      psceda: 277 missing values generated
+      pscedb: 277 missing values generated
+      pscedc: 276 missing values generated
+      pscedd: 291 missing values generated
+      pscede: 278 missing values generated
+      pscedf: 289 missing values generated
+      pscedg: 282 missing values generated
+      pscedh: 281 missing values generated
+
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh)               // count the number of missing items
+
+. tab1 s        //  5,343 have all items
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,343       94.48       94.48
+          1 |         30        0.53       95.01
+          2 |          4        0.07       95.08
+          3 |          2        0.04       95.12
+          7 |          1        0.02       95.14
+          8 |        275        4.86      100.00
+------------+-----------------------------------
+      Total |      5,655      100.00
+
+. di 5343+30+4  //  missing either 0,1,or 2 items.
+5377
+
+. 
+. *impute CESD scores only for those missing only 1 or 2 items: drop the rest.
+. keep if inlist(s,0,1,2)
+(278 observations deleted)
+
+. count
+  5,377
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      5,377    1.891389    .3111791          1          2
+      pscedb |      5,377    1.806212    .3953018          1          2
+      pscedc |      5,377    1.575786    .4942691          1          2
+      pscedd |      5,363    1.081857    .2741726          1          2
+      pscede |      5,375    1.889674    .3133243          1          2
+-------------+---------------------------------------------------------
+      pscedf |      5,365    1.080708     .272412          1          2
+      pscedg |      5,372    1.824274    .3806223          1          2
+      pscedh |      5,372    1.803611    .3973028          1          2
+
+. 
+. *Demonstrate how to use Multiple imputation to fill in the items 
+. *using age and sex as predictors of missing (complete variables).
+. *method of imputation here is predictive mean matching.
+. 
+. mi set wide
+
+. mi register imputed psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh                            // the variables we wish to impute 
+
+. mi impute chained (pmm,knn(5)) pscedd pscede pscedf pscedg pscedh = indsex indager, replace add(1)     // the imputation model; number of imputations
+
+Conditional models:
+            pscede: pmm pscede pscedg pscedh pscedf pscedd indsex indager , knn(5)
+            pscedg: pmm pscedg pscede pscedh pscedf pscedd indsex indager , knn(5)
+            pscedh: pmm pscedh pscede pscedg pscedf pscedd indsex indager , knn(5)
+            pscedf: pmm pscedf pscede pscedg pscedh pscedd indsex indager , knn(5)
+            pscedd: pmm pscedd pscede pscedg pscedh pscedf indsex indager , knn(5)
+
+Performing chained iterations ...
+
+Multivariate imputation                     Imputations =        1
+Chained equations                                 added =        1
+Imputed: m=1                                    updated =        0
+
+Initialization: monotone                     Iterations =       10
+                                                burn-in =       10
+
+            pscedd: predictive mean matching
+            pscede: predictive mean matching
+            pscedf: predictive mean matching
+            pscedg: predictive mean matching
+            pscedh: predictive mean matching
+
+------------------------------------------------------------------
+                   |               Observations per m             
+                   |----------------------------------------------
+          Variable |   Complete   Incomplete   Imputed |     Total
+-------------------+-----------------------------------+----------
+            pscedd |       5363           14        14 |      5377
+            pscede |       5375            2         2 |      5377
+            pscedf |       5365           12        12 |      5377
+            pscedg |       5372            5         5 |      5377
+            pscedh |       5372            5         5 |      5377
+------------------------------------------------------------------
+(Complete + Incomplete = Total; Imputed is the minimum across m
+ of the number of filled-in observations.)
+
+. *simple way of filling in missing values.
+. replace pscedd=_1_pscedd  if pscedd ==.
+(14 real changes made)
+
+. replace pscede=_1_pscede  if pscede ==.
+(2 real changes made)
+
+. replace pscedf=_1_pscedf  if pscedf ==.
+(12 real changes made)
+
+. replace pscedg=_1_pscedg  if pscedg ==.
+(5 real changes made)
+
+. replace pscedh=_1_pscedh  if pscedh ==.
+(5 real changes made)
+
+. drop _1* s     // drop variables we dont nee
+
+. summ psc*
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      5,377    1.891389    .3111791          1          2
+      pscedb |      5,377    1.806212    .3953018          1          2
+      pscedc |      5,377    1.575786    .4942691          1          2
+      pscedd |      5,377    1.082202    .2746977          1          2
+      pscede |      5,377    1.889715    .3132732          1          2
+-------------+---------------------------------------------------------
+      pscedf |      5,377      1.0809     .272707          1          2
+      pscedg |      5,377    1.824065    .3807999          1          2
+      pscedh |      5,377    1.803794    .3971632          1          2
+
+. 
+. *Now we can create the summary CESD score (range 0-8): number of depressive symptoms.
+. *making sure each item (zero = not depressed; 1=depressed)
+. 
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(4,793 real changes made)
+
+. replace f2=0 if pscedb==2
+(4,335 real changes made)
+
+. replace f3=0 if pscedc==2
+(3,096 real changes made)
+
+. replace f4=0 if pscedd==1    // happy
+(4,935 real changes made)
+
+. replace f5=0 if pscede==2
+(4,784 real changes made)
+
+. replace f6=0 if pscedf==1    // enjoyed life
+(4,942 real changes made)
+
+. replace f7=0 if pscedg==2
+(4,431 real changes made)
+
+. replace f8=0 if pscedh==2
+(4,322 real changes made)
+
+. replace f1=1 if psceda==1
+(584 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,042 real changes made)
+
+. replace f3=1 if pscedc==1
+(2,281 real changes made)
+
+. replace f4=1 if pscedd==2   // happy
+(442 real changes made)
+
+. replace f5=1 if pscede==1
+(593 real changes made)
+
+. replace f6=1 if pscedf==2   // enjoyed life
+(435 real changes made)
+
+. replace f7=1 if pscedg==1
+(946 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,055 real changes made)
+
+. mvdecode f1-f8,mv(-2)
+
+. egen cesd9 = rsum(f1-f8)      // sum of the scores (range: 0 to 8) 
+
+. summ cesd9
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+       cesd9 |      5,377    1.372141    1.774821          0          8
+
+. 
+. *Binary measure if wish to analyse a cutoff (e.g. score of 4+)
+. generate cesd_bin9 = cesd9
+
+. recode cesd_bin9 (0/3=0) (4/8=1)
+(3,138 changes made to cesd_bin9)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_bin9 clbl
+
+. tab1 cesd_bin9    // 12% with depression.
+
+-> tabulation of cesd_bin9  
+
+    cesd_bin9 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      4,725       87.87       87.87
+    depressed |        652       12.13      100.00
+--------------+-----------------------------------
+        Total |      5,377      100.00
+
+. gen inw9=1
+
+. count
+  5,377
+
+. keep idauniq cf_g3w9 cesd9 cesd_bin9 indager indsex inw9 region fqethnmr couple 
+
+. sort idauniq
+
+. *this line turned out to be important! please note this is an illustration of how to replace missing values.
+. *see example 2 for a better way.
+. mi unset, asis  
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta saved
+
+. 
+. *************************
+. *Wave 1 COVID: (SN 8688).
+. *************************
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w1_eulv2.dta", clear
+
+. keep idauniq FinStat CvMhCed_CvMhCed1_q - CvMhCed_CvMhCed7_q Sex Age_Arch
+
+. *keep core members only (cohorts 1, 3 and 4).
+. keep if inlist(FinStat,1,7,14)
+(2,482 observations deleted)
+
+. tab1 FinStat  // 4,558
+
+-> tabulation of FinStat  
+
+    DV: Detailed sample type and cohort |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                                   C1CM |      2,819       61.85       61.85
+                                   C3CM |        631       13.84       75.69
+                                   C4CM |      1,108       24.31      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      4,558      100.00
+
+. 
+. *CESD at COVID wave 1.
+. *Error in survey administration:
+. *Eight depression item not asked to around 75% of respondents (CvMhCed_CvMhCed8_q_final: felt sad): making imputation necessary rather than optional.
+. tab1 CvMhCed_CvMhCed1_q - CvMhCed_CvMhCed7_q
+
+-> tabulation of CvMhCed_CvMhCed1_q  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.04        0.04
+          Don't know |          6        0.13        0.18
+                 Yes |        775       17.00       17.18
+                  No |      3,775       82.82      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed2_q  
+
+    Much of the time |
+     during the past |
+ week: You felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.04        0.04
+          Don't know |          5        0.11        0.15
+                 Yes |      1,096       24.05       24.20
+                  No |      3,455       75.80      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed3_q  
+
+    Much of the time |
+     during the past |
+week: Your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          3        0.07        0.07
+          Don't know |          8        0.18        0.24
+                 Yes |      1,936       42.47       42.72
+                  No |      2,611       57.28      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed4_q  
+
+    Much of the time |
+     during the past |
+week: You were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          9        0.20        0.20
+          Don't know |         22        0.48        0.68
+                 Yes |      3,844       84.34       85.02
+                  No |        683       14.98      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed5_q  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.09        0.09
+          Don't know |          8        0.18        0.26
+                 Yes |        822       18.03       18.30
+                  No |      3,724       81.70      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed6_q  
+
+    Much of the time |
+     during the past |
+   week: You enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          9        0.20        0.20
+          Don't know |         28        0.61        0.81
+                 Yes |      3,693       81.02       81.83
+                  No |        828       18.17      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed8_q_final  
+
+    Much of the time |
+     during the past |
+      week: felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          6        0.13        0.13
+          Don't know |          6        0.13        0.26
+           Not asked |      3,470       76.13       76.39
+                 Yes |        251        5.51       81.90
+                  No |        825       18.10      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+-> tabulation of CvMhCed_CvMhCed7_q  
+
+    Much of the time |
+     during the past |
+ week: You could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          5        0.11        0.11
+          Don't know |         17        0.37        0.48
+                 Yes |      1,256       27.56       28.04
+                  No |      3,280       71.96      100.00
+---------------------+-----------------------------------
+               Total |      4,558      100.00
+
+. 
+. *rename to be consistent with main study
+. rename CvMhCed_CvMhCed1_q psceda
+
+. rename CvMhCed_CvMhCed2_q pscedb
+
+. rename CvMhCed_CvMhCed3_q pscedc
+
+. rename CvMhCed_CvMhCed4_q pscedd
+
+. rename CvMhCed_CvMhCed5_q pscede
+
+. rename CvMhCed_CvMhCed6_q pscedf
+
+. rename CvMhCed_CvMhCed7_q pscedh           // could not get going
+
+. rename CvMhCed_CvMhCed8_q_final pscedg     // sad
+
+. mvdecode psced*,mv(-9/-1)
+      psceda: 8 missing values generated
+      pscedb: 7 missing values generated
+      pscedc: 11 missing values generated
+      pscedd: 31 missing values generated
+      pscede: 12 missing values generated
+      pscedf: 37 missing values generated
+      pscedg: 3482 missing values generated
+      pscedh: 22 missing values generated
+
+. tab1 psc*
+
+-> tabulation of psceda  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        775       17.03       17.03
+                  No |      3,775       82.97      100.00
+---------------------+-----------------------------------
+               Total |      4,550      100.00
+
+-> tabulation of pscedb  
+
+    Much of the time |
+     during the past |
+ week: You felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,096       24.08       24.08
+                  No |      3,455       75.92      100.00
+---------------------+-----------------------------------
+               Total |      4,551      100.00
+
+-> tabulation of pscedc  
+
+    Much of the time |
+     during the past |
+week: Your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,936       42.58       42.58
+                  No |      2,611       57.42      100.00
+---------------------+-----------------------------------
+               Total |      4,547      100.00
+
+-> tabulation of pscedd  
+
+    Much of the time |
+     during the past |
+week: You were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      3,844       84.91       84.91
+                  No |        683       15.09      100.00
+---------------------+-----------------------------------
+               Total |      4,527      100.00
+
+-> tabulation of pscede  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        822       18.08       18.08
+                  No |      3,724       81.92      100.00
+---------------------+-----------------------------------
+               Total |      4,546      100.00
+
+-> tabulation of pscedf  
+
+    Much of the time |
+     during the past |
+   week: You enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      3,693       81.69       81.69
+                  No |        828       18.31      100.00
+---------------------+-----------------------------------
+               Total |      4,521      100.00
+
+-> tabulation of pscedg  
+
+    Much of the time |
+     during the past |
+      week: felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        251       23.33       23.33
+                  No |        825       76.67      100.00
+---------------------+-----------------------------------
+               Total |      1,076      100.00
+
+-> tabulation of pscedh  
+
+    Much of the time |
+     during the past |
+ week: You could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,256       27.69       27.69
+                  No |      3,280       72.31      100.00
+---------------------+-----------------------------------
+               Total |      4,536      100.00
+
+. 
+. *As in paper: limit imputation to those missing just 1 or 2 items 
+. 
+. 
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedh pscedg)               // count the number of missing items
+
+. tab1 s        
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      1,052       23.08       23.08
+          1 |      3,447       75.63       98.71
+          2 |         36        0.79       99.50
+          3 |         12        0.26       99.76
+          4 |          3        0.07       99.82
+          5 |          5        0.11       99.93
+          6 |          3        0.07      100.00
+------------+-----------------------------------
+      Total |      4,558      100.00
+
+. *4535
+. keep if inlist(s,0,1,2)
+(23 observations deleted)
+
+. count
+  4,535
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      4,531     1.83006    .3756219          1          2
+      pscedb |      4,532    1.759267    .4275754          1          2
+      pscedc |      4,528    1.575088    .4943842          1          2
+      pscedd |      4,522    1.151039    .3581268          1          2
+      pscede |      4,533    1.819546    .3846079          1          2
+-------------+---------------------------------------------------------
+      pscedf |      4,515    1.183167    .3868464          1          2
+      pscedg |      1,075    1.767442    .4226595          1          2
+      pscedh |      4,525     1.72442    .4468555          1          2
+
+. 
+. *Same procedure as main study:
+. *Multiple imputation using age and sex (complete variables)
+. mi set wide
+
+. mi register imputed psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh                                              // variables to impute
+
+. mi impute chained (pmm,knn(5)) psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh = Sex Age_Arch, replace add(1)    // imputation method
+
+Conditional models:
+            pscede: pmm pscede pscedb psceda pscedc pscedh pscedd pscedf pscedg Sex Age_Arch , knn(5)
+            pscedb: pmm pscedb pscede psceda pscedc pscedh pscedd pscedf pscedg Sex Age_Arch , knn(5)
+            psceda: pmm psceda pscede pscedb pscedc pscedh pscedd pscedf pscedg Sex Age_Arch , knn(5)
+            pscedc: pmm pscedc pscede pscedb psceda pscedh pscedd pscedf pscedg Sex Age_Arch , knn(5)
+            pscedh: pmm pscedh pscede pscedb psceda pscedc pscedd pscedf pscedg Sex Age_Arch , knn(5)
+            pscedd: pmm pscedd pscede pscedb psceda pscedc pscedh pscedf pscedg Sex Age_Arch , knn(5)
+            pscedf: pmm pscedf pscede pscedb psceda pscedc pscedh pscedd pscedg Sex Age_Arch , knn(5)
+            pscedg: pmm pscedg pscede pscedb psceda pscedc pscedh pscedd pscedf Sex Age_Arch , knn(5)
+
+Performing chained iterations ...
+
+Multivariate imputation                     Imputations =        1
+Chained equations                                 added =        1
+Imputed: m=1                                    updated =        0
+
+Initialization: monotone                     Iterations =       10
+                                                burn-in =       10
+
+            psceda: predictive mean matching
+            pscedb: predictive mean matching
+            pscedc: predictive mean matching
+            pscedd: predictive mean matching
+            pscede: predictive mean matching
+            pscedf: predictive mean matching
+            pscedg: predictive mean matching
+            pscedh: predictive mean matching
+
+------------------------------------------------------------------
+                   |               Observations per m             
+                   |----------------------------------------------
+          Variable |   Complete   Incomplete   Imputed |     Total
+-------------------+-----------------------------------+----------
+            psceda |       4531            4         4 |      4535
+            pscedb |       4532            3         3 |      4535
+            pscedc |       4528            7         7 |      4535
+            pscedd |       4522           13        13 |      4535
+            pscede |       4533            2         2 |      4535
+            pscedf |       4515           20        20 |      4535
+            pscedg |       1075         3460      3460 |      4535
+            pscedh |       4525           10        10 |      4535
+------------------------------------------------------------------
+(Complete + Incomplete = Total; Imputed is the minimum across m
+ of the number of filled-in observations.)
+
+. replace psceda=_1_psceda  if psceda ==.
+(4 real changes made)
+
+. replace pscedb=_1_pscedb  if pscedb ==.
+(3 real changes made)
+
+. replace pscedc=_1_pscedc  if pscedc ==.
+(7 real changes made)
+
+. replace pscedd=_1_pscedd  if pscedd ==.
+(13 real changes made)
+
+. replace pscede=_1_pscede  if pscede ==.
+(2 real changes made)
+
+. replace pscedf=_1_pscedf  if pscedf ==.
+(20 real changes made)
+
+. replace pscedg=_1_pscedg  if pscedg ==.
+(3,460 real changes made)
+
+. replace pscedh=_1_pscedh  if pscedh ==.
+(10 real changes made)
+
+. drop _1* s
+
+. summ psc*
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      4,535    1.829989    .3756839          1          2
+      pscedb |      4,535    1.759206    .4276125          1          2
+      pscedc |      4,535    1.575303    .4943514          1          2
+      pscedd |      4,535    1.151268    .3583493          1          2
+      pscede |      4,535    1.819405     .384725          1          2
+-------------+---------------------------------------------------------
+      pscedf |      4,535    1.183903    .3874478          1          2
+      pscedg |      4,535    1.780154    .4141876          1          2
+      pscedh |      4,535    1.725028    .4465496          1          2
+
+. 
+. *Now we can create the summary score: CESD number of depressive symptoms.
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(3,764 real changes made)
+
+. replace f2=0 if pscedb==2
+(3,443 real changes made)
+
+. replace f3=0 if pscedc==2
+(2,609 real changes made)
+
+. replace f4=0 if pscedd==1    // happy
+(3,849 real changes made)
+
+. replace f5=0 if pscede==2
+(3,716 real changes made)
+
+. replace f6=0 if pscedf==1    // enjoyed life
+(3,701 real changes made)
+
+. replace f7=0 if pscedg==2
+(3,538 real changes made)
+
+. replace f8=0 if pscedh==2
+(3,288 real changes made)
+
+. replace f1=1 if psceda==1
+(771 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,092 real changes made)
+
+. replace f3=1 if pscedc==1
+(1,926 real changes made)
+
+. replace f4=1 if pscedd==2  // happy
+(686 real changes made)
+
+. replace f5=1 if pscede==1
+(819 real changes made)
+
+. replace f6=1 if pscedf==2  // enjoyed life
+(834 real changes made)
+
+. replace f7=1 if pscedg==1
+(997 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,247 real changes made)
+
+. mvdecode f1-f8,mv(-2)
+
+. egen cesd_covid1 = rsum(f1-f8)     // sum of the scores (range 0-8)           
+
+. summ cesd_covid1  
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ cesd_covid1 |      4,535    1.846086     2.17388          0          8
+
+. 
+. *Binary measure (scores of 4+)
+. generate cesd_bincovid1 = cesd_covid1
+
+. recode cesd_bincovid1 (0/3=0) (4/8=1)
+(2,861 changes made to cesd_bincovid1)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_bincovid1 clbl
+
+. summ cesd_covid1 
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ cesd_covid1 |      4,535    1.846086     2.17388          0          8
+
+. tab1 cesd_bincovid1      // 20% with depression.
+
+-> tabulation of cesd_bincovid1  
+
+cesd_bincovid |
+            1 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,617       79.76       79.76
+    depressed |        918       20.24      100.00
+--------------+-----------------------------------
+        Total |      4,535      100.00
+
+. gen incovidw1=1
+
+. keep idauniq cesd_covid1 cesd_bincovid1 incovidw1
+
+. sort idauniq
+
+. *This important step.
+. mi unset, asis
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w1.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w1.dta saved
+
+. 
+. *************************
+. *Wave 2 COVID: SN 8688.
+. *************************
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w2_eulv2.dta", clear
+
+. keep idauniq Finstat_w1 CvMhCed_CvMhCed1_q CvMhCed_CvMhCed2_q CvMhCed_CvMhCed3_q CvMhCed_CvMhCed4_q CvMhCed_CvMhCed5_q ///
+> CvMhCed_CvMhCed6_q CvMhCed_CvMhCed7_q CvMhCed_CvMhCed8_q Sex Age_arch
+
+. *keep core members only (cohorts 1, 3 and 4).
+. keep if inlist(Finstat_w1,1,7,14)
+(2,429 observations deleted)
+
+. tab1 Finstat_w1  // 4,365
+
+-> tabulation of Finstat_w1  
+
+    DV: Detailed sample type and cohort |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                                   C1CM |      2,679       61.37       61.37
+                                   C3CM |        624       14.30       75.67
+                                   C4CM |      1,062       24.33      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      4,365      100.00
+
+. tab1 CvMhCed_CvMhCed1_q - CvMhCed_CvMhCed8_q
+
+-> tabulation of CvMhCed_CvMhCed1_q  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.05        0.05
+          Don't know |          5        0.11        0.16
+                 Yes |        795       18.21       18.37
+                  No |      3,563       81.63      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed2_q  
+
+    Much of the time |
+     during the past |
+ week, you felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.05        0.05
+          Don't know |          6        0.14        0.18
+                 Yes |      1,083       24.81       24.99
+                  No |      3,274       75.01      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed3_q  
+
+    Much of the time |
+     during the past |
+week, your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          3        0.07        0.07
+          Don't know |          7        0.16        0.23
+                 Yes |      1,969       45.11       45.34
+                  No |      2,386       54.66      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed4_q  
+
+    Much of the time |
+     during the past |
+week, you were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          6        0.14        0.14
+          Don't know |         21        0.48        0.62
+                 Yes |      3,572       81.83       82.45
+                  No |        766       17.55      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed5_q  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.09        0.09
+          Don't know |         10        0.23        0.32
+                 Yes |        792       18.14       18.47
+                  No |      3,559       81.53      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed6_q  
+
+    Much of the time |
+     during the past |
+   week, you enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          6        0.14        0.14
+          Don't know |         27        0.62        0.76
+                 Yes |      3,432       78.63       79.38
+                  No |        900       20.62      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed7_q  
+
+    Much of the time |
+     during the past |
+ week, you could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.09        0.09
+          Don't know |         12        0.27        0.37
+                 Yes |      1,308       29.97       30.33
+                  No |      3,041       69.67      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+-> tabulation of CvMhCed_CvMhCed8_q  
+
+    Much of the time |
+     during the past |
+  week, you felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          8        0.18        0.18
+          Don't know |         10        0.23        0.41
+                 Yes |      1,244       28.50       28.91
+                  No |      3,103       71.09      100.00
+---------------------+-----------------------------------
+               Total |      4,365      100.00
+
+. *rename for consistency.
+. rename CvMhCed_CvMhCed1_q psceda
+
+. rename CvMhCed_CvMhCed2_q pscedb
+
+. rename CvMhCed_CvMhCed3_q pscedc
+
+. rename CvMhCed_CvMhCed4_q pscedd
+
+. rename CvMhCed_CvMhCed5_q pscede
+
+. rename CvMhCed_CvMhCed6_q pscedf
+
+. rename CvMhCed_CvMhCed7_q pscedh          // could not get going
+
+. rename CvMhCed_CvMhCed8_q pscedg          // sad
+
+. 
+. mvdecode psced*,mv(-9/-1)     // set to missing
+      psceda: 7 missing values generated
+      pscedb: 8 missing values generated
+      pscedc: 10 missing values generated
+      pscedd: 27 missing values generated
+      pscede: 14 missing values generated
+      pscedf: 33 missing values generated
+      pscedh: 16 missing values generated
+      pscedg: 18 missing values generated
+
+. 
+. *Limit imputation to those missing just 1 or 2 items (now among the 8 available items)
+. *CESD scale.
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedh pscedg)               // count the number of missing items
+
+. tab1 s        // 4295 have all items
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      4,295       98.40       98.40
+          1 |         44        1.01       99.40
+          2 |         12        0.27       99.68
+          3 |          6        0.14       99.82
+          4 |          3        0.07       99.89
+          5 |          1        0.02       99.91
+          7 |          2        0.05       99.95
+          8 |          2        0.05      100.00
+------------+-----------------------------------
+      Total |      4,365      100.00
+
+. di 4295+44+12 // missing 0,1, or 2 items.
+4351
+
+. *4351
+. keep if inlist(s,0,1,2)
+(14 observations deleted)
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      4,348    1.818077    .3858252          1          2
+      pscedb |      4,347    1.752243    .4317596          1          2
+      pscedc |      4,346     1.54832    .4977169          1          2
+      pscedd |      4,336     1.17643    .3812295          1          2
+      pscede |      4,343    1.818789    .3852374          1          2
+-------------+---------------------------------------------------------
+      pscedf |      4,332    1.207756    .4057482          1          2
+      pscedg |      4,345    1.714154    .4518683          1          2
+      pscedh |      4,343    1.699747    .4584208          1          2
+
+. 
+. *same multiple imputation procedure.
+. *Multiple imputation using age and sex (complete variables)
+. mi set wide
+
+. mi register imputed psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh                                             // variables to impute
+
+. mi impute chained (pmm,knn(5)) psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh = Sex Age_arch, replace add(1)   // imputation method
+
+Conditional models:
+            psceda: pmm psceda pscedb pscedc pscedg pscede pscedh pscedd pscedf Sex Age_arch , knn(5)
+            pscedb: pmm pscedb psceda pscedc pscedg pscede pscedh pscedd pscedf Sex Age_arch , knn(5)
+            pscedc: pmm pscedc psceda pscedb pscedg pscede pscedh pscedd pscedf Sex Age_arch , knn(5)
+            pscedg: pmm pscedg psceda pscedb pscedc pscede pscedh pscedd pscedf Sex Age_arch , knn(5)
+            pscede: pmm pscede psceda pscedb pscedc pscedg pscedh pscedd pscedf Sex Age_arch , knn(5)
+            pscedh: pmm pscedh psceda pscedb pscedc pscedg pscede pscedd pscedf Sex Age_arch , knn(5)
+            pscedd: pmm pscedd psceda pscedb pscedc pscedg pscede pscedh pscedf Sex Age_arch , knn(5)
+            pscedf: pmm pscedf psceda pscedb pscedc pscedg pscede pscedh pscedd Sex Age_arch , knn(5)
+
+Performing chained iterations ...
+
+Multivariate imputation                     Imputations =        1
+Chained equations                                 added =        1
+Imputed: m=1                                    updated =        0
+
+Initialization: monotone                     Iterations =       10
+                                                burn-in =       10
+
+            psceda: predictive mean matching
+            pscedb: predictive mean matching
+            pscedc: predictive mean matching
+            pscedd: predictive mean matching
+            pscede: predictive mean matching
+            pscedf: predictive mean matching
+            pscedg: predictive mean matching
+            pscedh: predictive mean matching
+
+------------------------------------------------------------------
+                   |               Observations per m             
+                   |----------------------------------------------
+          Variable |   Complete   Incomplete   Imputed |     Total
+-------------------+-----------------------------------+----------
+            psceda |       4348            3         3 |      4351
+            pscedb |       4347            4         4 |      4351
+            pscedc |       4346            5         5 |      4351
+            pscedd |       4336           15        15 |      4351
+            pscede |       4343            8         8 |      4351
+            pscedf |       4332           19        19 |      4351
+            pscedg |       4345            6         6 |      4351
+            pscedh |       4343            8         8 |      4351
+------------------------------------------------------------------
+(Complete + Incomplete = Total; Imputed is the minimum across m
+ of the number of filled-in observations.)
+
+. replace psceda=_1_psceda  if psceda ==.
+(3 real changes made)
+
+. replace pscedb=_1_pscedb  if pscedb ==.
+(4 real changes made)
+
+. replace pscedc=_1_pscedc  if pscedc ==.
+(5 real changes made)
+
+. replace pscedd=_1_pscedd  if pscedd ==.
+(15 real changes made)
+
+. replace pscede=_1_pscede  if pscede ==.
+(8 real changes made)
+
+. replace pscedf=_1_pscedf  if pscedf ==.
+(19 real changes made)
+
+. replace pscedg=_1_pscedg  if pscedg ==.
+(6 real changes made)
+
+. replace pscedh=_1_pscedh  if pscedh ==.
+(8 real changes made)
+
+. drop _1* s
+
+. summ psc* 
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      4,351    1.817743    .3861005          1          2
+      pscedb |      4,351    1.752241    .4317608          1          2
+      pscedc |      4,351     1.54838    .4977111          1          2
+      pscedd |      4,351    1.177201    .3818823          1          2
+      pscede |      4,351    1.818662    .3853419          1          2
+-------------+---------------------------------------------------------
+      pscedf |      4,351    1.207998    .4059222          1          2
+      pscedh |      4,351    1.699609    .4584806          1          2
+      pscedg |      4,351    1.714319    .4517903          1          2
+
+. 
+. *Now we can create the summary scores: CESD (number of depressive symptoms).
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(3,558 real changes made)
+
+. replace f2=0 if pscedb==2
+(3,273 real changes made)
+
+. replace f3=0 if pscedc==2
+(2,386 real changes made)
+
+. replace f4=0 if pscedd==1   // happy
+(3,580 real changes made)
+
+. replace f5=0 if pscede==2
+(3,562 real changes made)
+
+. replace f6=0 if pscedf==1   // enjoyed
+(3,446 real changes made)
+
+. replace f7=0 if pscedg==2
+(3,108 real changes made)
+
+. replace f8=0 if pscedh==2
+(3,044 real changes made)
+
+. replace f1=1 if psceda==1
+(793 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,078 real changes made)
+
+. replace f3=1 if pscedc==1
+(1,965 real changes made)
+
+. replace f4=1 if pscedd==2   // happy
+(771 real changes made)
+
+. replace f5=1 if pscede==1
+(789 real changes made)
+
+. replace f6=1 if pscedf==2   // enjoyed
+(905 real changes made)
+
+. replace f7=1 if pscedg==1
+(1,243 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,307 real changes made)
+
+. mvdecode f1-f8,mv(-2)
+
+. egen cesd_covid2 = rsum(f1-f8)         // sum the scores (range 0-8)           
+
+. summ cesd_covid2 
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ cesd_covid2 |      4,351    2.034245    2.294416          0          8
+
+. 
+. *Binary measure (score of 4+)
+. generate cesd_bincovid2 = cesd_covid2
+
+. recode cesd_bincovid2 (0/3=0) (4/8=1)
+(2,850 changes made to cesd_bincovid2)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_bincovid2 clbl
+
+. tab1 cesd_bincovid2      // 23% with depression.
+
+-> tabulation of cesd_bincovid2  
+
+cesd_bincovid |
+            2 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,342       76.81       76.81
+    depressed |      1,009       23.19      100.00
+--------------+-----------------------------------
+        Total |      4,351      100.00
+
+. gen incovidw2=1
+
+. keep idauniq cesd_covid2 cesd_bincovid2 incovidw2
+
+. sort idauniq
+
+. *this important step.
+. mi unset, asis
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w2.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w2.dta saved
+
+. 
+. ********************************************************************************.
+. *Put the 3 datasets together for longitudinal analysis.
+. *Our analytical sample: condition on having a CESD score at wave 9 (N=5,377).
+. *For these models not necessary to have a balanced panel.
+. ********************************************************************************.
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta", clear
+
+. sort idauniq
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w1.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         1,306
+        from master                     1,074  (_merge==1)
+        from using                        232  (_merge==2)
+
+    Matched                             4,303  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(232 observations deleted)
+
+. drop _m
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w2.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         1,468
+        from master                     1,247  (_merge==1)
+        from using                        221  (_merge==2)
+
+    Matched                             4,130  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(221 observations deleted)
+
+. drop _m
+
+. summ cesd9 cesd_covid1 cesd_covid2                         // continuous measures
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+       cesd9 |      5,377    1.372141    1.774821          0          8
+ cesd_covid1 |      4,303    1.848013    2.175505          0          8
+ cesd_covid2 |      4,130    2.039709     2.29468          0          8
+
+. tab1 cesd_bin9 cesd_bincovid1 cesd_bincovid2               // binary measures
+
+-> tabulation of cesd_bin9  
+
+    cesd_bin9 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      4,725       87.87       87.87
+    depressed |        652       12.13      100.00
+--------------+-----------------------------------
+        Total |      5,377      100.00
+
+-> tabulation of cesd_bincovid1  
+
+cesd_bincovid |
+            1 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,426       79.62       79.62
+    depressed |        877       20.38      100.00
+--------------+-----------------------------------
+        Total |      4,303      100.00
+
+-> tabulation of cesd_bincovid2  
+
+cesd_bincovid |
+            2 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,166       76.66       76.66
+    depressed |        964       23.34      100.00
+--------------+-----------------------------------
+        Total |      4,130      100.00
+
+. 
+. *we now need to reshape dataset from wide (1 row per observation) to long format (1 row for each person-wave).
+. *do this need to rename variables: specify zero as baseline (wave 9).
+. 
+. rename (cesd9 cesd_covid1 cesd_covid2) (cesd0 cesd1 cesd2)
+
+. keep idauniq cesd0 cesd1 cesd2 indsex indager region fqethnmr couple cf_g3w9
+
+. 
+. *time-varying variables before the comma: without the wave suffix (i.e. 0,1,2).
+. *i = identifier.
+. *j = name to denote time period.
+. reshape long cesd, i(idauniq) j(wave)
+(j = 0 1 2)
+
+Data                               Wide   ->   Long
+-----------------------------------------------------------------------------
+Number of observations            5,377   ->   16,131      
+Number of variables                  10   ->   9           
+j variable (3 values)                     ->   wave
+xij variables:
+                      cesd0 cesd1 cesd2   ->   cesd
+-----------------------------------------------------------------------------
+
+. 
+. *Key predictor for a growth model (time-in-study): here treated as categorical.
+. label define wavelbl 0 "2018/19" 1 "Jun/July 2020" 2 "Nov/Dec 2020"
+
+. label values wave wavelbl
+
+. 
+. *Growth curve model via the mixed command for continuous outcomes.
+. *Outcome = CESD score.
+. *Data is clustered by idauniq.
+. *Key Predictors = wave (time-in-study); CF status at w9; and time*CF status interaction term: treated as categorical.
+. *This allows the rate of change in mean depression for a 1-unit increase in time (e.g. from the main study at wave 9 to COVID wave 1) to vary across the CF status groups.
+. *Adjust for ethnicity; region fqethnmr couple.
+. 
+. *Fixed part of the model before the || 
+. *random part of the model after the ||.
+. *note: this is not performed on multiply-imputed data.
+. 
+. 
+. mixed cesd i.wave i.cf_g3w9 i.wave#i.cf_g3w9 i.region i.fqethnmr i.couple || idauniq:, variance ml covariance(un) 
+note: single-variable random-effects specification in idauniq equation; covariance structure set to identity.
+
+Performing EM optimization ...
+
+Performing gradient-based optimization: 
+Iteration 0:  Log likelihood = -27794.973  
+Iteration 1:  Log likelihood = -27794.973  
+
+Computing standard errors ...
+
+Mixed-effects ML regression                         Number of obs    =  13,810
+Group variable: idauniq                             Number of groups =   5,377
+                                                    Obs per group:
+                                                                 min =       1
+                                                                 avg =     2.6
+                                                                 max =       3
+                                                    Wald chi2(14)    = 1012.84
+Log likelihood = -27794.973                         Prob > chi2      =  0.0000
+
+------------------------------------------------------------------------------------------------
+                          cesd | Coefficient  Std. err.      z    P>|z|     [95% conf. interval]
+-------------------------------+----------------------------------------------------------------
+                          wave |
+                Jun/July 2020  |   .5801305   .0324622    17.87   0.000     .5165057    .6437553
+                 Nov/Dec 2020  |   .8000806   .0327972    24.39   0.000     .7357992     .864362
+                               |
+                       cf_g3w9 |
+              mild-impairment  |   .3078419   .0930077     3.31   0.001     .1255502    .4901337
+                     dementia  |   .5946919   .0874299     6.80   0.000     .4233324    .7660513
+                               |
+                  wave#cf_g3w9 |
+Jun/July 2020#mild-impairment  |  -.0039848   .1044273    -0.04   0.970    -.2086586    .2006889
+       Jun/July 2020#dementia  |  -.1302604   .1075619    -1.21   0.226    -.3410779    .0805571
+ Nov/Dec 2020#mild-impairment  |  -.0938428   .1054929    -0.89   0.374     -.300605    .1129195
+        Nov/Dec 2020#dementia  |  -.0675938   .1154561    -0.59   0.558    -.2938837     .158696
+                               |
+                        region |
+                     Midlands  |  -.0335849   .0684381    -0.49   0.624    -.1677211    .1005513
+              London and East  |  -.2266698   .0686503    -3.30   0.001     -.361222   -.0921176
+                        South  |  -.1613051   .0628043    -2.57   0.010    -.2843992    -.038211
+                               |
+                      fqethnmr |
+                    Non-White  |   .1071349   .1398875     0.77   0.444    -.1670397    .3813094
+                               |
+                        couple |
+                      Cohabit  |   .2018792   .1137719     1.77   0.076    -.0211096     .424868
+                      Neither  |   .7300551   .0510022    14.31   0.000     .6300925    .8300176
+                               |
+                         _cons |   1.107502   .0527946    20.98   0.000     1.004027    1.210977
+------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+  Random-effects parameters  |   Estimate   Std. err.     [95% conf. interval]
+-----------------------------+------------------------------------------------
+idauniq: Identity            |
+                  var(_cons) |   2.158979   .0590303      2.046327    2.277832
+-----------------------------+------------------------------------------------
+               var(Residual) |   1.971541   .0302551      1.913125     2.03174
+------------------------------------------------------------------------------
+LR test vs. linear model: chibar2(01) = 3158.68       Prob >= chibar2 = 0.0000
+
+. 
+. *using a post-estimation command (-margins-) we can obtain predicted values for the 9 combinations of time and CF status.
+. *and plot them using -marginsplot-
+. margins i.wave#i.cf_g3w9
+
+Predictive margins                                      Number of obs = 13,810
+
+Expression: Linear prediction, fixed portion, predict()
+
+------------------------------------------------------------------------------------------------
+                               |            Delta-method
+                               |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------------------------+----------------------------------------------------------------
+                  wave#cf_g3w9 |
+        2018/19#no impairment  |    1.25395     .03135    40.00   0.000     1.192505    1.315394
+      2018/19#mild-impairment  |   1.561791   .0875178    17.85   0.000      1.39026    1.733323
+             2018/19#dementia  |   1.848641   .0815465    22.67   0.000     1.688813     2.00847
+  Jun/July 2020#no impairment  |    1.83408   .0331569    55.32   0.000     1.769094    1.899066
+Jun/July 2020#mild-impairment  |   2.137937   .1010822    21.15   0.000      1.93982    2.336055
+       Jun/July 2020#dementia  |   2.298511   .1043274    22.03   0.000     2.094034    2.502989
+   Nov/Dec 2020#no impairment  |    2.05403   .0334856    61.34   0.000       1.9884    2.119661
+ Nov/Dec 2020#mild-impairment  |   2.268029   .1020772    22.22   0.000     2.067962    2.468097
+        Nov/Dec 2020#dementia  |   2.581128   .1123655    22.97   0.000     2.360896    2.801361
+------------------------------------------------------------------------------------------------
+
+. marginsplot, ytitle("Estimated score") title("Depression score")
+
+Variables that uniquely identify margins: wave cf_g3w9
+
+. 
+. ***********************
+. *FINISHED
+. ***********************
+. 
+. 
+. **********************************************************
+. *Illustration of a longitudinal model for binary outcome
+. *********************************************************
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta", clear
+
+. sort idauniq
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w1.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         1,306
+        from master                     1,074  (_merge==1)
+        from using                        232  (_merge==2)
+
+    Matched                             4,303  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(232 observations deleted)
+
+. drop _m
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_COVID_w2.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         1,468
+        from master                     1,247  (_merge==1)
+        from using                        221  (_merge==2)
+
+    Matched                             4,130  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(221 observations deleted)
+
+. drop _m
+
+. tab1 cesd_bin9 cesd_bincovid1 cesd_bincovid2               // binary measures
+
+-> tabulation of cesd_bin9  
+
+    cesd_bin9 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      4,725       87.87       87.87
+    depressed |        652       12.13      100.00
+--------------+-----------------------------------
+        Total |      5,377      100.00
+
+-> tabulation of cesd_bincovid1  
+
+cesd_bincovid |
+            1 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,426       79.62       79.62
+    depressed |        877       20.38      100.00
+--------------+-----------------------------------
+        Total |      4,303      100.00
+
+-> tabulation of cesd_bincovid2  
+
+cesd_bincovid |
+            2 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,166       76.66       76.66
+    depressed |        964       23.34      100.00
+--------------+-----------------------------------
+        Total |      4,130      100.00
+
+. 
+. *we now need to reshape dataset from wide (1 row per observation) to long format (1 row for each person-wave).
+. *do this need to rename variables: specify zero as baseline (wave 9).
+. *here we focus on the binary outcome at each of the 3 time-points.
+. 
+. rename (cesd_bin9 cesd_bincovid1 cesd_bincovid2) (cesd0 cesd1 cesd2)
+
+. keep idauniq cesd0 cesd1 cesd2 indsex indager region fqethnmr couple cf_g3w9
+
+. 
+. *time-varying variables before the comma: without the wave suffix (i.e. 0,1,2).
+. *i = identifier.
+. *j = name to denote time period.
+. reshape long cesd, i(idauniq) j(wave)
+(j = 0 1 2)
+
+Data                               Wide   ->   Long
+-----------------------------------------------------------------------------
+Number of observations            5,377   ->   16,131      
+Number of variables                  10   ->   9           
+j variable (3 values)                     ->   wave
+xij variables:
+                      cesd0 cesd1 cesd2   ->   cesd
+-----------------------------------------------------------------------------
+
+. 
+. *Key predictor for a growth model (time-in-study): here treated as categorical.
+. label define wavelbl 0 "2018/19" 1 "Jun/July 2020" 2 "Nov/Dec 2020"
+
+. label values wave wavelbl
+
+. 
+. *Growth curve model via the melogit command for binary outcomes.
+. *Outcome = CESD score.
+. *Data is clustered by idauniq.
+. *Key Predictors = wave (time-in-study); CF status at w9; and time*CF status interaction term: treated as categorical.
+. *Adjust for ethnicity; region fqethnmr couple.
+. 
+. *Fixed part of the model before the || 
+. *random part of the model after the ||.
+. *note: this is not performed on multiply-imputed data.
+. 
+. *random intercept only
+. melogit cesd i.wave i.cf_g3w9 i.wave#i.cf_g3w9 i.region i.fqethnmr i.couple || idauniq:, or cov(unstructured) nolog
+
+Mixed-effects logistic regression               Number of obs     =     13,810
+Group variable: idauniq                         Number of groups  =      5,377
+
+                                                Obs per group:
+                                                              min =          1
+                                                              avg =        2.6
+                                                              max =          3
+
+Integration method: mvaghermite                 Integration pts.  =          7
+
+                                                Wald chi2(14)     =     488.07
+Log likelihood = -5639.0475                     Prob > chi2       =     0.0000
+------------------------------------------------------------------------------------------------
+                          cesd | Odds ratio   Std. err.      z    P>|z|     [95% conf. interval]
+-------------------------------+----------------------------------------------------------------
+                          wave |
+                Jun/July 2020  |   3.745176   .3435795    14.39   0.000     3.128843    4.482918
+                 Nov/Dec 2020  |   5.278709   .4943762    17.76   0.000      4.39348      6.3423
+                               |
+                       cf_g3w9 |
+              mild-impairment  |   1.593936    .346419     2.15   0.032     1.041057    2.440435
+                     dementia  |   3.686993   .6908582     6.96   0.000     2.553739    5.323142
+                               |
+                  wave#cf_g3w9 |
+Jun/July 2020#mild-impairment  |   .8907324   .2301072    -0.45   0.654     .5368491    1.477891
+       Jun/July 2020#dementia  |   .5781313   .1373398    -2.31   0.021     .3629248    .9209504
+ Nov/Dec 2020#mild-impairment  |   .9530743   .2445198    -0.19   0.851     .5764256    1.575833
+        Nov/Dec 2020#dementia  |   .5821815   .1472894    -2.14   0.032     .3545751    .9558916
+                               |
+                        region |
+                     Midlands  |    .888608   .1223046    -0.86   0.391     .6785067    1.163768
+              London and East  |    .632097   .0889423    -3.26   0.001      .479746    .8328296
+                        South  |   .8187081   .1035022    -1.58   0.114     .6390267    1.048912
+                               |
+                      fqethnmr |
+                    Non-White  |   1.293138   .3640101     0.91   0.361     .7447954    2.245188
+                               |
+                        couple |
+                      Cohabit  |   1.476189   .3396218     1.69   0.090     .9403919    2.317262
+                      Neither  |    3.45392   .3587602    11.93   0.000     2.817719    4.233768
+                               |
+                         _cons |   .0157472   .0023648   -27.64   0.000     .0117321    .0211363
+-------------------------------+----------------------------------------------------------------
+idauniq                        |
+                     var(_cons)|   6.220692   .4820465                      5.344147    7.241007
+------------------------------------------------------------------------------------------------
+Note: Estimates are transformed only in the first equation to odds ratios.
+Note: _cons estimates baseline odds (conditional on zero random effects).
+LR test vs. logistic model: chibar2(01) = 1190.32     Prob >= chibar2 = 0.0000
+
+. *estimated probabilities.
+. margins i.wave#i.cf_g3w9
+
+Predictive margins                                      Number of obs = 13,810
+Model VCE: OIM
+
+Expression: Marginal predicted mean, predict()
+
+------------------------------------------------------------------------------------------------
+                               |            Delta-method
+                               |     Margin   std. err.      z    P>|z|     [95% conf. interval]
+-------------------------------+----------------------------------------------------------------
+                  wave#cf_g3w9 |
+        2018/19#no impairment  |   .1051826    .004773    22.04   0.000     .0958277    .1145375
+      2018/19#mild-impairment  |   .1353119   .0142276     9.51   0.000     .1074264    .1631975
+             2018/19#dementia  |   .2026458   .0150621    13.45   0.000     .1731246     .232167
+  Jun/July 2020#no impairment  |   .2040516   .0064174    31.80   0.000     .1914737    .2166295
+Jun/July 2020#mild-impairment  |   .2368295   .0203415    11.64   0.000     .1969609    .2766981
+       Jun/July 2020#dementia  |   .2778612   .0216568    12.83   0.000     .2354146    .3203077
+   Nov/Dec 2020#no impairment  |   .2361235   .0066986    35.25   0.000     .2229945    .2492524
+ Nov/Dec 2020#mild-impairment  |   .2783334    .021419    12.99   0.000      .236353    .3203138
+        Nov/Dec 2020#dementia  |   .3157861   .0247292    12.77   0.000     .2673177    .3642544
+------------------------------------------------------------------------------------------------
+
+. marginsplot, ytitle("Estimated probability") title("Depression score")
+
+Variables that uniquely identify margins: wave cf_g3w9
+
+. 
+. ***********************
+. *FINISHED
+. ***********************
+. 
+. log close
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\Example 1.log
+  log type:  text
+ closed on:   6 Sep 2024, 17:20:22
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
