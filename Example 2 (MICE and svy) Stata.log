@@ -1,0 +1,1879 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\Example 2.log
+  log type:  text
+ opened on:   7 Sep 2024, 10:33:53
+
+. 
+. 
+. *****************************************************************************
+. *Example 2: UEA COVID datathon.
+. *Single-level model of health outcomes (focus on outcomes at COVID wave 2).
+. ******************************************************************************
+. 
+. *Some illustrative code for:
+. *Mental health, financial, and social outcomes among older adults with probable COVID-19 infection: A longitudinal cohort study
+. *PNAS 2022 Vol. 119 No. 27 e2200816119.
+. 
+. *Note that Eleanor's full code can be accessed on GitHub 
+. *(https://github.com/Ellie25moon/ELSA-COVID-19-Infection).
+. 
+. *I have used some of that code in this illustrative example.
+. *The work also builds on the R code in the excellent paper mentioned in the Lecture:
+. *MatchThem:: Matching and Weighting after Multiple Imputation
+. *by Farhad Pishgar, Noah Greifer, Clémence Leyrat and Elizabeth Stuart
+. *The R Journal Vol. 13/2, December 2021
+. *https://journal.r-project.org/archive/2021/RJ-2021-073/RJ-2021-073.pdf
+. 
+. *The paper details many analyses; and has lengthy code.
+. *I only provide an illustration of these analyses as a starting point for your own efforts.
+. 
+. *In this example:
+. *Outcome measure: (Binary CESD depression score): at the second wave of the COVID study.
+. *Key exposure is probable COVID-19 infection (measured at the first wave of the COVID study).
+. 
+. *I illustrate two different approaches to examine associations between probable infection and depression.
+. 
+. *(1) Regression model estimated on multiply-imputed data, combining regression estimates using Rubin's rules, using survey weight.
+. *Implemented here in Stata.
+. *Illustrated in R (MICE and svy)
+. 
+. *(2) IPTW using multiply imputed datasets.
+. *Illustrated in R (MICE and IPTW)
+. 
+. 
+. **************************************************************
+. *Datasets:
+. *SN 5050: Main ELSA study: wave_9_elsa_data_eul_v1.dta
+. *SN 8688 COVID wave 1: elsa_covid_w1_eulv2.dta
+. *SN 8688 COVID wave 2: elsa_covid_w2_eulv2.dta
+. **************************************************************
+. 
+. 
+. *************************************.
+. *(SN 5050): Wave 9 main ELSA study.
+. *Pre-pandemic mental health
+. **************************************.
+. 
+. clear all
+
+. clear
+
+. set maxvar 15000
+
+
+. set seed 579503
+
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\ELSA-5050\stata\wave_9_elsa_data_eul_v1.dta"
+
+. keep idauniq finstat psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh 
+
+. 
+. *Keep core members only (decided here to use Cohorts 1, 3 and 4).
+. keep if inlist(finstat,1,7,14)
+(3,081 observations deleted)
+
+. tab1 finstat
+
+-> tabulation of finstat  
+
+            (D) W9 final finstat status |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                                   C1CM |      3,660       64.72       64.72
+                                   C3CM |        688       12.17       76.89
+                                   C4CM |      1,307       23.11      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      5,655      100.00
+
+. 
+. *tab1 psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+. mvdecode psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh,mv(-9/-1)              // set to missing (.)
+      psceda: 277 missing values generated
+      pscedb: 277 missing values generated
+      pscedc: 276 missing values generated
+      pscedd: 291 missing values generated
+      pscede: 278 missing values generated
+      pscedf: 289 missing values generated
+      pscedg: 282 missing values generated
+      pscedh: 281 missing values generated
+
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh)               // count the number of missing items
+
+. tab1 s        //  5,343 have all items
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,343       94.48       94.48
+          1 |         30        0.53       95.01
+          2 |          4        0.07       95.08
+          3 |          2        0.04       95.12
+          7 |          1        0.02       95.14
+          8 |        275        4.86      100.00
+------------+-----------------------------------
+      Total |      5,655      100.00
+
+. di 5343+30+4  //  missing either 0,1,or 2 items.
+5377
+
+. 
+. *impute CESD scores only for those missing only 1 or 2 items: drop the rest.
+. keep if inlist(s,0,1,2)
+(278 observations deleted)
+
+. count
+  5,377
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      5,377    1.891389    .3111791          1          2
+      pscedb |      5,377    1.806212    .3953018          1          2
+      pscedc |      5,377    1.575786    .4942691          1          2
+      pscedd |      5,363    1.081857    .2741726          1          2
+      pscede |      5,375    1.889674    .3133243          1          2
+-------------+---------------------------------------------------------
+      pscedf |      5,365    1.080708     .272412          1          2
+      pscedg |      5,372    1.824274    .3806223          1          2
+      pscedh |      5,372    1.803611    .3973028          1          2
+
+. 
+. *Create the summary score: CESD number of depressive symptoms.
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(4,793 real changes made)
+
+. replace f2=0 if pscedb==2
+(4,335 real changes made)
+
+. replace f3=0 if pscedc==2
+(3,096 real changes made)
+
+. replace f4=0 if pscedd==1    // happy
+(4,924 real changes made)
+
+. replace f5=0 if pscede==2
+(4,782 real changes made)
+
+. replace f6=0 if pscedf==1    // enjoyed life
+(4,932 real changes made)
+
+. replace f7=0 if pscedg==2
+(4,428 real changes made)
+
+. replace f8=0 if pscedh==2
+(4,317 real changes made)
+
+. replace f1=1 if psceda==1
+(584 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,042 real changes made)
+
+. replace f3=1 if pscedc==1
+(2,281 real changes made)
+
+. replace f4=1 if pscedd==2  // happy
+(439 real changes made)
+
+. replace f5=1 if pscede==1
+(593 real changes made)
+
+. replace f6=1 if pscedf==2  // enjoyed life
+(433 real changes made)
+
+. replace f7=1 if pscedg==1
+(944 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,055 real changes made)
+
+. tab1 f1-f8
+
+-> tabulation of f1  
+
+         f1 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      4,793       89.14       89.14
+          1 |        584       10.86      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f2  
+
+         f2 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      4,335       80.62       80.62
+          1 |      1,042       19.38      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f3  
+
+         f3 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      3,096       57.58       57.58
+          1 |      2,281       42.42      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f4  
+
+         f4 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -2 |         14        0.26        0.26
+          0 |      4,924       91.58       91.84
+          1 |        439        8.16      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f5  
+
+         f5 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -2 |          2        0.04        0.04
+          0 |      4,782       88.93       88.97
+          1 |        593       11.03      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f6  
+
+         f6 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -2 |         12        0.22        0.22
+          0 |      4,932       91.72       91.95
+          1 |        433        8.05      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f7  
+
+         f7 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -2 |          5        0.09        0.09
+          0 |      4,428       82.35       82.44
+          1 |        944       17.56      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+-> tabulation of f8  
+
+         f8 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -2 |          5        0.09        0.09
+          0 |      4,317       80.29       80.38
+          1 |      1,055       19.62      100.00
+------------+-----------------------------------
+      Total |      5,377      100.00
+
+. mvdecode f1-f8,mv(-2)
+          f4: 14 missing values generated
+          f5: 2 missing values generated
+          f6: 12 missing values generated
+          f7: 5 missing values generated
+          f8: 5 missing values generated
+
+. egen cesd_w9 = rsum(f1-f8) if s==0     // sum of the scores (range 0-8)  if answered all 8 items (n=5343)        
+(34 missing values generated)
+
+. summ cesd_w9
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+     cesd_w9 |      5,343    1.364402    1.770082          0          8
+
+. tab1 cesd_w9
+
+-> tabulation of cesd_w9  
+
+    cesd_w9 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      2,234       41.81       41.81
+          1 |      1,437       26.90       68.71
+          2 |        652       12.20       80.91
+          3 |        379        7.09       88.00
+          4 |        222        4.15       92.16
+          5 |        177        3.31       95.47
+          6 |        109        2.04       97.51
+          7 |         79        1.48       98.99
+          8 |         54        1.01      100.00
+------------+-----------------------------------
+      Total |      5,343      100.00
+
+. 
+. *Binary measure (scores of 4+)
+. generate cesd_binw9 = cesd_w9
+(34 missing values generated)
+
+. recode cesd_binw9 (0/3=0) (4/8=1)
+(3,109 changes made to cesd_binw9)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_binw9 clbl
+
+. tab1 cesd_binw9, m     // 12% with depression (base: n=5343)
+
+-> tabulation of cesd_binw9  
+
+   cesd_binw9 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      4,702       87.45       87.45
+    depressed |        641       11.92       99.37
+            . |         34        0.63      100.00
+--------------+-----------------------------------
+        Total |      5,377      100.00
+
+. *we will impute the missing later (n=34) if in analytical sample.
+. 
+. sort idauniq
+
+. keep idauniq cesd_binw9
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta saved
+
+. 
+. 
+. *****************************.
+. *(SN 8688): Wave 1 COVID: 
+. *****************************.
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w1_eulv2.dta", clear
+
+. renvars, lower
+
+. keep if corepartner==1
+(1,215 observations deleted)
+
+. mvdecode cvsymp01 cvsymp02 cvsymp05 cvtestb cvhosp,mv(-9/-1) 
+     cvtestb: 5523 missing values generated
+      cvhosp: 2 missing values generated
+
+. 
+. ***Key exposure:
+. ***Definition of probable COVID-19 infection 
+. ** whether had one/two of the three key symptoms of covid.
+. **This is Ellie's code: we will use definition 1.
+. 
+. *high temp
+. tab cvsymp01, nolab missing 
+
+    Symptom |
+      since |
+coronavirus |
+     : High |
+temperature |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,603       96.19       96.19
+          1 |        222        3.81      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. *cough 
+. tab cvsymp02, nolab missing 
+
+    Symptom |
+      since |
+coronavirus |
+    : A new |
+ continuous |
+      cough |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,608       96.27       96.27
+          1 |        217        3.73      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. *loss smell/taste
+. tab cvsymp05, nolab missing 
+
+    Symptom |
+      since |
+coronavirus |
+  : Loss of |
+   sense of |
+   smell or |
+      taste |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,623       96.53       96.53
+          1 |        202        3.47      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. egen keycovsymsum = rowtotal(cvsymp01 cvsymp02 cvsymp05 )
+
+. tab keycovsymsum, missing 
+
+keycovsymsu |
+          m |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,367       92.14       92.14
+          1 |        312        5.36       97.49
+          2 |        109        1.87       99.36
+          3 |         37        0.64      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. generate keycovsymp2=(keycovsymsum>=2) if keycovsymsum !=.
+
+. tab keycovsymp2
+
+keycovsymp2 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,679       97.49       97.49
+          1 |        146        2.51      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. generate keycovsymp1=(keycovsymsum>=1) if keycovsymsum !=.
+
+. tab keycovsymp1
+
+keycovsymp1 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,367       92.14       92.14
+          1 |        458        7.86      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. *covid test
+. tab cvtestb, nolab missing
+
+  Result of |
+coronavirus |
+       test |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          1 |         15        0.26        0.26
+          2 |        247        4.24        4.50
+          3 |         12        0.21        4.70
+          4 |         28        0.48        5.18
+          . |      5,523       94.82      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. replace cvtestb = 0 if cvtestb > 1 | cvtestb == . 
+(5,810 real changes made)
+
+. tab cvtestb, nolab
+
+  Result of |
+coronavirus |
+       test |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,810       99.74       99.74
+          1 |         15        0.26      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. *covid hosp 
+. tab cvhosp, nolab
+
+   Have you |
+had to stay |
+in hospital |
+     due to |
+coronavirus |
+          ? |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          1 |         18        0.31        0.31
+          2 |      5,805       99.69      100.00
+------------+-----------------------------------
+      Total |      5,823      100.00
+
+. replace cvhosp = 0 if cvhosp == 2 | cvhosp == . 
+(5,807 real changes made)
+
+. tab cvhosp
+
+Have you had to stay |
+  in hospital due to |
+        coronavirus? |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                   0 |      5,807       99.69       99.69
+                 Yes |         18        0.31      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+. 
+. ** Definition 1: positive covid test/ hospitalisation/ one of three core symptoms 
+. gen covcase1 = (cvtestb == 1 | cvhosp == 1 | keycovsymp1 == 1) if cvtestb !=. | cvhosp !=. | keycovsymp1 !=.
+
+. tab covcase1 
+
+   covcase1 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,354       91.91       91.91
+          1 |        471        8.09      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. ** Definition 2: positive covid test/ hospitalisation/ two of three core symptoms 
+. gen covcase2 = ( cvtestb == 1 | cvhosp == 1 | keycovsymp2 == 1 ) if cvtestb !=. | cvhosp !=. | keycovsymp2 !=.
+
+. tab covcase2 
+
+   covcase2 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,663       97.22       97.22
+          1 |        162        2.78      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. ** Definition 3: positive covid test/ hospitalisation/ loss of taste or smell 
+. gen covcase3 = ( cvtestb == 1 | cvhosp == 1 | cvsymp05 == 1 ) if cvtestb !=. | cvhosp !=. | cvsymp05 !=. 
+
+. tab covcase3
+
+   covcase3 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,605       96.22       96.22
+          1 |        220        3.78      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. 
+. *Outcome measure at COVID wave 1.
+. *For simplicity I will impute the outcome as a binary measure.
+. tab1 cvmhced_cvmhced1_q-cvmhced_cvmhced7_q
+
+-> tabulation of cvmhced_cvmhced1_q  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.03        0.03
+          Don't know |          8        0.14        0.17
+                 Yes |      1,019       17.49       17.67
+                  No |      4,796       82.33      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced2_q  
+
+    Much of the time |
+     during the past |
+ week: You felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.03        0.03
+          Don't know |          7        0.12        0.15
+                 Yes |      1,418       24.34       24.50
+                  No |      4,398       75.50      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced3_q  
+
+    Much of the time |
+     during the past |
+week: Your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          3        0.05        0.05
+          Don't know |         10        0.17        0.22
+                 Yes |      2,596       44.57       44.79
+                  No |      3,216       55.21      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced4_q  
+
+    Much of the time |
+     during the past |
+week: You were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          9        0.15        0.15
+          Don't know |         27        0.46        0.62
+                 Yes |      4,865       83.52       84.14
+                  No |        924       15.86      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced5_q  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.07        0.07
+          Don't know |         11        0.19        0.26
+                 Yes |      1,064       18.27       18.52
+                  No |      4,746       81.48      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced6_q  
+
+    Much of the time |
+     during the past |
+   week: You enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |         10        0.17        0.17
+          Don't know |         33        0.57        0.74
+                 Yes |      4,693       80.57       81.30
+                  No |      1,089       18.70      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced8_q_final  
+
+    Much of the time |
+     during the past |
+      week: felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          7        0.12        0.12
+          Don't know |          7        0.12        0.24
+           Not asked |      4,433       76.10       76.34
+                 Yes |        331        5.68       82.03
+                  No |      1,047       17.97      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+-> tabulation of cvmhced_cvmhced7_q  
+
+    Much of the time |
+     during the past |
+ week: You could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          6        0.10        0.10
+          Don't know |         20        0.34        0.45
+                 Yes |      1,612       27.67       28.12
+                  No |      4,187       71.88      100.00
+---------------------+-----------------------------------
+               Total |      5,825      100.00
+
+. 
+. *rename to be consistent with main study
+. rename cvmhced_cvmhced1_q psceda
+
+. rename cvmhced_cvmhced2_q pscedb
+
+. rename cvmhced_cvmhced3_q pscedc
+
+. rename cvmhced_cvmhced4_q pscedd
+
+. rename cvmhced_cvmhced5_q pscede
+
+. rename cvmhced_cvmhced6_q pscedf
+
+. rename cvmhced_cvmhced7_q pscedh           // could not get going
+
+. rename cvmhced_cvmhced8_q_final pscedg     // sad
+
+. mvdecode psced*,mv(-9/-1)
+      psceda: 10 missing values generated
+      pscedb: 9 missing values generated
+      pscedc: 13 missing values generated
+      pscedd: 36 missing values generated
+      pscede: 15 missing values generated
+      pscedf: 43 missing values generated
+      pscedg: 4447 missing values generated
+      pscedh: 26 missing values generated
+
+. tab1 psc*
+
+-> tabulation of psceda  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,019       17.52       17.52
+                  No |      4,796       82.48      100.00
+---------------------+-----------------------------------
+               Total |      5,815      100.00
+
+-> tabulation of pscedb  
+
+    Much of the time |
+     during the past |
+ week: You felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,418       24.38       24.38
+                  No |      4,398       75.62      100.00
+---------------------+-----------------------------------
+               Total |      5,816      100.00
+
+-> tabulation of pscedc  
+
+    Much of the time |
+     during the past |
+week: Your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      2,596       44.67       44.67
+                  No |      3,216       55.33      100.00
+---------------------+-----------------------------------
+               Total |      5,812      100.00
+
+-> tabulation of pscedd  
+
+    Much of the time |
+     during the past |
+week: You were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      4,865       84.04       84.04
+                  No |        924       15.96      100.00
+---------------------+-----------------------------------
+               Total |      5,789      100.00
+
+-> tabulation of pscede  
+
+    Much of the time |
+     during the past |
+      week: You felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,064       18.31       18.31
+                  No |      4,746       81.69      100.00
+---------------------+-----------------------------------
+               Total |      5,810      100.00
+
+-> tabulation of pscedf  
+
+    Much of the time |
+     during the past |
+   week: You enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      4,693       81.17       81.17
+                  No |      1,089       18.83      100.00
+---------------------+-----------------------------------
+               Total |      5,782      100.00
+
+-> tabulation of pscedg  
+
+    Much of the time |
+     during the past |
+      week: felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        331       24.02       24.02
+                  No |      1,047       75.98      100.00
+---------------------+-----------------------------------
+               Total |      1,378      100.00
+
+-> tabulation of pscedh  
+
+    Much of the time |
+     during the past |
+ week: You could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,612       27.80       27.80
+                  No |      4,187       72.20      100.00
+---------------------+-----------------------------------
+               Total |      5,799      100.00
+
+. 
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh)               // count the number of missing items (including the item with a lot of missing)
+
+. tab1 s       
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      1,350       23.18       23.18
+          1 |      4,408       75.67       98.85
+          2 |         39        0.67       99.52
+          3 |         14        0.24       99.76
+          4 |          5        0.09       99.85
+          5 |          5        0.09       99.93
+          6 |          3        0.05       99.98
+          8 |          1        0.02      100.00
+------------+-----------------------------------
+      Total |      5,825      100.00
+
+. di (1350+4408+39)  // drop those with more than 2 missing items
+5797
+
+. keep if inlist(s,0,1,2)
+(28 observations deleted)
+
+. count
+  5,797
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      5,792    1.825104    .3799113          1          2
+      pscedb |      5,793    1.756258    .4293762          1          2
+      pscedc |      5,790    1.554231    .4970932          1          2
+      pscedd |      5,782     1.15946    .3661365          1          2
+      pscede |      5,795    1.817256    .3864896          1          2
+-------------+---------------------------------------------------------
+      pscedf |      5,774    1.188258    .3909517          1          2
+      pscedg |      1,377    1.760349    .4270258          1          2
+      pscedh |      5,787       1.723    .4475552          1          2
+
+. 
+. *Create the summary score: CESD number of depressive symptoms.
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(4,779 real changes made)
+
+. replace f2=0 if pscedb==2
+(4,381 real changes made)
+
+. replace f3=0 if pscedc==2
+(3,209 real changes made)
+
+. replace f4=0 if pscedd==1    // happy
+(4,860 real changes made)
+
+. replace f5=0 if pscede==2
+(4,736 real changes made)
+
+. replace f6=0 if pscedf==1    // enjoyed life
+(4,687 real changes made)
+
+. replace f7=0 if pscedg==2
+(1,047 real changes made)
+
+. replace f8=0 if pscedh==2
+(4,184 real changes made)
+
+. replace f1=1 if psceda==1
+(1,013 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,412 real changes made)
+
+. replace f3=1 if pscedc==1
+(2,581 real changes made)
+
+. replace f4=1 if pscedd==2  // happy
+(922 real changes made)
+
+. replace f5=1 if pscede==1
+(1,059 real changes made)
+
+. replace f6=1 if pscedf==2  // enjoyed life
+(1,087 real changes made)
+
+. replace f7=1 if pscedg==1
+(330 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,603 real changes made)
+
+. mvdecode f1-f8,mv(-2)
+          f1: 5 missing values generated
+          f2: 4 missing values generated
+          f3: 7 missing values generated
+          f4: 15 missing values generated
+          f5: 2 missing values generated
+          f6: 23 missing values generated
+          f7: 4420 missing values generated
+          f8: 10 missing values generated
+
+. egen cesd_covid1 = rsum(f1-f8) if s==0     // sum of the scores (range 0-8)  if answered all 8 items (n=1350)        
+(4,447 missing values generated)
+
+. tab1 cesd_covid1
+
+-> tabulation of cesd_covid1  
+
+cesd_covid1 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |        461       34.15       34.15
+          1 |        294       21.78       55.93
+          2 |        169       12.52       68.44
+          3 |        127        9.41       77.85
+          4 |         91        6.74       84.59
+          5 |         74        5.48       90.07
+          6 |         53        3.93       94.00
+          7 |         40        2.96       96.96
+          8 |         41        3.04      100.00
+------------+-----------------------------------
+      Total |      1,350      100.00
+
+.  
+. *Binary measure (scores of 4+)
+. generate cesd_bincovid1 = cesd_covid1
+(4,447 missing values generated)
+
+. recode cesd_bincovid1 (0/3=0) (4/8=1)
+(889 changes made to cesd_bincovid1)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_bincovid1 clbl
+
+. tab1 cesd_bincovid1, m     // 22% with depression (n=1350)
+
+-> tabulation of cesd_bincovid1  
+
+cesd_bincovid |
+            1 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      1,051       18.13       18.13
+    depressed |        299        5.16       23.29
+            . |      4,447       76.71      100.00
+--------------+-----------------------------------
+        Total |      5,797      100.00
+
+. *we will impute the missing later if in analytical sample
+. 
+. keep idauniq covcase1 cesd_bincovid1
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid1.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid1.dta saved
+
+. 
+. *************************
+. *Wave 2 COVID: (SN 8688).
+. *************************
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w2_eulv2.dta", clear
+
+. renvars, lower
+
+. *key survey (longitudinal) weight.
+. *Analytical sample: those with a positive weight (only core members receive weights).
+. *longitudinal weight: COV19LWGTW2, therefore, is for all respondents to wave 2 of the COVID-19 study 
+. *who took part in ELSA wave 9, irrespective of response to wave 1 of the substudy.
+. 
+. summ cov19lwgtw2b if cov19lwgtw2b>0
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+cov19lwgtw2b |      5,146           1    .8364531   .1025807   9.489346
+
+. *Analytical sample (N=5146)
+. keep if cov19lwgtw2b>0
+(1,648 observations deleted)
+
+. 
+. *Outcome measure at COVID wave 2.
+. *For simplicity I will impute the outcome as a binary measure.
+. tab1 cvmhced_cvmhced1_q-cvmhced_cvmhced8_q
+
+-> tabulation of cvmhced_cvmhced1_q  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          1        0.02        0.02
+          Don't know |          3        0.06        0.08
+                 Yes |        984       19.12       19.20
+                  No |      4,158       80.80      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced2_q  
+
+    Much of the time |
+     during the past |
+ week, you felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.04        0.04
+          Don't know |          4        0.08        0.12
+                 Yes |      1,309       25.44       25.55
+                  No |      3,831       74.45      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced3_q  
+
+    Much of the time |
+     during the past |
+week, your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          3        0.06        0.06
+          Don't know |          6        0.12        0.17
+                 Yes |      2,449       47.59       47.77
+                  No |      2,688       52.23      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced4_q  
+
+    Much of the time |
+     during the past |
+week, you were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          8        0.16        0.16
+          Don't know |         19        0.37        0.52
+                 Yes |      4,167       80.98       81.50
+                  No |        952       18.50      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced5_q  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.08        0.08
+          Don't know |          8        0.16        0.23
+                 Yes |        965       18.75       18.99
+                  No |      4,169       81.01      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced6_q  
+
+    Much of the time |
+     during the past |
+   week, you enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          6        0.12        0.12
+          Don't know |         23        0.45        0.56
+                 Yes |      4,008       77.89       78.45
+                  No |      1,109       21.55      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced7_q  
+
+    Much of the time |
+     during the past |
+ week, you could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          4        0.08        0.08
+          Don't know |         10        0.19        0.27
+                 Yes |      1,574       30.59       30.86
+                  No |      3,558       69.14      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+-> tabulation of cvmhced_cvmhced8_q  
+
+    Much of the time |
+     during the past |
+  week, you felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          8        0.16        0.16
+          Don't know |          8        0.16        0.31
+                 Yes |      1,543       29.98       30.30
+                  No |      3,587       69.70      100.00
+---------------------+-----------------------------------
+               Total |      5,146      100.00
+
+. 
+. *rename to be consistent with main study
+. rename cvmhced_cvmhced1_q psceda
+
+. rename cvmhced_cvmhced2_q pscedb
+
+. rename cvmhced_cvmhced3_q pscedc
+
+. rename cvmhced_cvmhced4_q pscedd
+
+. rename cvmhced_cvmhced5_q pscede
+
+. rename cvmhced_cvmhced6_q pscedf
+
+. rename cvmhced_cvmhced7_q pscedh     // could not get going
+
+. rename cvmhced_cvmhced8_q pscedg     // sad
+
+. mvdecode psced*,mv(-9/-1)                                            // set to missing
+      psceda: 4 missing values generated
+      pscedb: 6 missing values generated
+      pscedc: 9 missing values generated
+      pscedd: 27 missing values generated
+      pscede: 12 missing values generated
+      pscedf: 29 missing values generated
+      pscedh: 14 missing values generated
+      pscedg: 16 missing values generated
+
+. tab1 psc*
+
+-> tabulation of psceda  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+           depressed |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        984       19.14       19.14
+                  No |      4,158       80.86      100.00
+---------------------+-----------------------------------
+               Total |      5,142      100.00
+
+-> tabulation of pscedb  
+
+    Much of the time |
+     during the past |
+ week, you felt that |
+  everything you did |
+            was an e |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,309       25.47       25.47
+                  No |      3,831       74.53      100.00
+---------------------+-----------------------------------
+               Total |      5,140      100.00
+
+-> tabulation of pscedc  
+
+    Much of the time |
+     during the past |
+week, your sleep was |
+            restless |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      2,449       47.67       47.67
+                  No |      2,688       52.33      100.00
+---------------------+-----------------------------------
+               Total |      5,137      100.00
+
+-> tabulation of pscedd  
+
+    Much of the time |
+     during the past |
+week, you were happy |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      4,167       81.40       81.40
+                  No |        952       18.60      100.00
+---------------------+-----------------------------------
+               Total |      5,119      100.00
+
+-> tabulation of pscede  
+
+    Much of the time |
+     during the past |
+      week, you felt |
+              lonely |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |        965       18.80       18.80
+                  No |      4,169       81.20      100.00
+---------------------+-----------------------------------
+               Total |      5,134      100.00
+
+-> tabulation of pscedf  
+
+    Much of the time |
+     during the past |
+   week, you enjoyed |
+                life |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      4,008       78.33       78.33
+                  No |      1,109       21.67      100.00
+---------------------+-----------------------------------
+               Total |      5,117      100.00
+
+-> tabulation of pscedh  
+
+    Much of the time |
+     during the past |
+ week, you could not |
+           get going |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,574       30.67       30.67
+                  No |      3,558       69.33      100.00
+---------------------+-----------------------------------
+               Total |      5,132      100.00
+
+-> tabulation of pscedg  
+
+    Much of the time |
+     during the past |
+  week, you felt sad |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      1,543       30.08       30.08
+                  No |      3,587       69.92      100.00
+---------------------+-----------------------------------
+               Total |      5,130      100.00
+
+. 
+. egen s = rowmiss(psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh)               // count the number of missing items 
+
+. tab1 s       
+
+-> tabulation of s  
+
+          s |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,080       98.72       98.72
+          1 |         44        0.86       99.57
+          2 |         10        0.19       99.77
+          3 |          5        0.10       99.86
+          4 |          3        0.06       99.92
+          5 |          1        0.02       99.94
+          6 |          1        0.02       99.96
+          7 |          1        0.02       99.98
+          8 |          1        0.02      100.00
+------------+-----------------------------------
+      Total |      5,146      100.00
+
+. di (5080+44+10)  // drop those with more than 2 missing items
+5134
+
+. keep if inlist(s,0,1,2)
+(12 observations deleted)
+
+. count
+  5,134
+
+. summ psceda pscedb pscedc pscedd pscede pscedf pscedg pscedh
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+      psceda |      5,133    1.808884    .3932188          1          2
+      pscedb |      5,130    1.746199    .4352276          1          2
+      pscedc |      5,129    1.523494    .4994964          1          2
+      pscedd |      5,117    1.185851    .3890245          1          2
+      pscede |      5,127    1.812756    .3901453          1          2
+-------------+---------------------------------------------------------
+      pscedf |      5,117    1.216729    .4120564          1          2
+      pscedg |      5,128    1.699493    .4585232          1          2
+      pscedh |      5,127    1.693583      .46105          1          2
+
+. 
+. *Create the summary score: CESD number of depressive symptoms.
+. forvalues i = 1/8 {
+  2. generate f`i'=-2
+  3. }
+
+. replace f1=0 if psceda==2
+(4,152 real changes made)
+
+. replace f2=0 if pscedb==2
+(3,828 real changes made)
+
+. replace f3=0 if pscedc==2
+(2,685 real changes made)
+
+. replace f4=0 if pscedd==1    // happy
+(4,166 real changes made)
+
+. replace f5=0 if pscede==2
+(4,167 real changes made)
+
+. replace f6=0 if pscedf==1    // enjoyed life
+(4,008 real changes made)
+
+. replace f7=0 if pscedg==2
+(3,587 real changes made)
+
+. replace f8=0 if pscedh==2
+(3,556 real changes made)
+
+. replace f1=1 if psceda==1
+(981 real changes made)
+
+. replace f2=1 if pscedb==1
+(1,302 real changes made)
+
+. replace f3=1 if pscedc==1
+(2,444 real changes made)
+
+. replace f4=1 if pscedd==2  // happy
+(951 real changes made)
+
+. replace f5=1 if pscede==1
+(960 real changes made)
+
+. replace f6=1 if pscedf==2  // enjoyed life
+(1,109 real changes made)
+
+. replace f7=1 if pscedg==1
+(1,541 real changes made)
+
+. replace f8=1 if pscedh==1
+(1,571 real changes made)
+
+. mvdecode f1-f8,mv(-2)
+          f1: 1 missing value generated
+          f2: 4 missing values generated
+          f3: 5 missing values generated
+          f4: 17 missing values generated
+          f5: 7 missing values generated
+          f6: 17 missing values generated
+          f7: 6 missing values generated
+          f8: 7 missing values generated
+
+. egen cesd_covid2 = rsum(f1-f8) if s==0     // sum of the scores (range 0-8)  if answered all 8 items (n=5080)        
+(54 missing values generated)
+
+. tab1 cesd_covid2 
+
+-> tabulation of cesd_covid2  
+
+cesd_covid2 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      1,718       33.82       33.82
+          1 |      1,098       21.61       55.43
+          2 |        553       10.89       66.32
+          3 |        455        8.96       75.28
+          4 |        351        6.91       82.19
+          5 |        257        5.06       87.24
+          6 |        269        5.30       92.54
+          7 |        193        3.80       96.34
+          8 |        186        3.66      100.00
+------------+-----------------------------------
+      Total |      5,080      100.00
+
+.  
+. *Binary measure (scores of 4+)
+. generate cesd_bincovid2 = cesd_covid2
+(54 missing values generated)
+
+. recode cesd_bincovid2 (0/3=0) (4/8=1)
+(3,362 changes made to cesd_bincovid2)
+
+. label define clbl 0 "not depressed" 1 "depressed"
+
+. label values cesd_bincovid2 clbl
+
+. tab1 cesd_bincovid2, m     // 25% with depression (n=5080)
+
+-> tabulation of cesd_bincovid2  
+
+cesd_bincovid |
+            2 |      Freq.     Percent        Cum.
+--------------+-----------------------------------
+not depressed |      3,824       74.48       74.48
+    depressed |      1,256       24.46       98.95
+            . |         54        1.05      100.00
+--------------+-----------------------------------
+        Total |      5,134      100.00
+
+. *we will impute the missing later (n=54)
+. 
+. **covid infection at wave 2.
+. *covid test 
+. tab cvtestb
+
+ What was the result |
+ of your coronavirus |
+    (COVID-19) test? |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          1        0.02        0.02
+          Don't know |          3        0.06        0.08
+      Not applicable |      3,903       76.02       76.10
+            Positive |         57        1.11       77.21
+            Negative |      1,122       21.85       99.07
+        Inconclusive |         13        0.25       99.32
+ Waiting for results |         35        0.68      100.00
+---------------------+-----------------------------------
+               Total |      5,134      100.00
+
+. tab cvtestb, nolab 
+
+   What was |
+ the result |
+    of your |
+coronavirus |
+ (COVID-19) |
+      test? |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -9 |          1        0.02        0.02
+         -8 |          3        0.06        0.08
+         -1 |      3,903       76.02       76.10
+          1 |         57        1.11       77.21
+          2 |      1,122       21.85       99.07
+          3 |         13        0.25       99.32
+          4 |         35        0.68      100.00
+------------+-----------------------------------
+      Total |      5,134      100.00
+
+. replace cvtestb = 0 if cvtestb > 1 | cvtestb == -1
+(5,073 real changes made)
+
+. replace cvtestb = . if cvtestb < -1
+(4 real changes made, 4 to missing)
+
+. tab cvtestb, nolab
+
+   What was |
+ the result |
+    of your |
+coronavirus |
+ (COVID-19) |
+      test? |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,073       98.89       98.89
+          1 |         57        1.11      100.00
+------------+-----------------------------------
+      Total |      5,130      100.00
+
+. 
+. * covd hospitalisation 
+. tab cvhosp 
+
+       Since we last |
+interviewed you have |
+  you had to stay in |
+        hospital for |
+       treatment due |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+          Don't know |          1        0.02        0.02
+                 Yes |         17        0.33        0.35
+                  No |      5,116       99.65      100.00
+---------------------+-----------------------------------
+               Total |      5,134      100.00
+
+. tab cvhosp, nolab
+
+   Since we |
+       last |
+interviewed |
+   you have |
+ you had to |
+    stay in |
+   hospital |
+        for |
+  treatment |
+        due |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -8 |          1        0.02        0.02
+          1 |         17        0.33        0.35
+          2 |      5,116       99.65      100.00
+------------+-----------------------------------
+      Total |      5,134      100.00
+
+. replace cvhosp = 0 if cvhosp == 2
+(5,116 real changes made)
+
+. replace cvhosp = . if cvhosp < 0
+(1 real change made, 1 to missing)
+
+. tab cvhosp, nolab
+
+   Since we |
+       last |
+interviewed |
+   you have |
+ you had to |
+    stay in |
+   hospital |
+        for |
+  treatment |
+        due |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,116       99.67       99.67
+          1 |         17        0.33      100.00
+------------+-----------------------------------
+      Total |      5,133      100.00
+
+. 
+. * long covid 
+. tab cvlongcovid
+
+  Have you been told |
+by a doctor that you |
+            have any |
+       long-standing |
+   illness or disabi |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+      Not applicable |      4,934       96.10       96.10
+                 Yes |          6        0.12       96.22
+                  No |        194        3.78      100.00
+---------------------+-----------------------------------
+               Total |      5,134      100.00
+
+. tab cvlongcovid, nolab
+
+   Have you |
+  been told |
+by a doctor |
+   that you |
+   have any |
+long-standi |
+ ng illness |
+  or disabi |      Freq.     Percent        Cum.
+------------+-----------------------------------
+         -1 |      4,934       96.10       96.10
+          1 |          6        0.12       96.22
+          2 |        194        3.78      100.00
+------------+-----------------------------------
+      Total |      5,134      100.00
+
+. replace cvlongcovid = 0 if cvlongcovid == -1 | cvlongcovid == 2
+(5,128 real changes made)
+
+. tab cvlongcovid
+
+  Have you been told |
+by a doctor that you |
+            have any |
+       long-standing |
+   illness or disabi |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                   0 |      5,128       99.88       99.88
+                 Yes |          6        0.12      100.00
+---------------------+-----------------------------------
+               Total |      5,134      100.00
+
+. 
+. *COVID infection status at COVID wave 2
+. gen cov_w11 = ( cvtestb == 1 | cvhosp == 1 | cvlongcovid == 1 ) if cvtestb !=. | cvhosp !=. | cvlongcovid !=.
+
+. tab1 cov_w11
+
+-> tabulation of cov_w11  
+
+    cov_w11 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      5,065       98.66       98.66
+          1 |         69        1.34      100.00
+------------+-----------------------------------
+      Total |      5,134      100.00
+
+. label variable cov_w11 "Infection status at COVID wave 2"
+
+. 
+. *limiting illness 
+. mvdecode heill,mv(-9/-1) 
+       heill: 2 missing values generated
+
+. tab heill
+
+     Do you have any |
+       long-standing |
+ illness, disability |
+   or infirmity?  By |
+        long-standin |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                 Yes |      2,237       43.59       43.59
+                  No |      2,895       56.41      100.00
+---------------------+-----------------------------------
+               Total |      5,132      100.00
+
+. recode heill (2=0) (1=1) // 1=yes; 0=no
+(2,895 changes made to heill)
+
+. tab heill
+
+     Do you have any |
+       long-standing |
+ illness, disability |
+   or infirmity?  By |
+        long-standin |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                   0 |      2,895       56.41       56.41
+                 Yes |      2,237       43.59      100.00
+---------------------+-----------------------------------
+               Total |      5,132      100.00
+
+. 
+. 
+. *vulnerable to covid 
+. mvdecode cvvuln,mv(-9/-8) 
+     cvvulnb: 2 missing values generated
+
+. tab cvvuln
+
+       Have you been |
+contacted by the NHS |
+      or your GP and |
+advised that you are |
+           vulnerabl |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+      Not applicable |        815       15.88       15.88
+                 Yes |        201        3.92       19.80
+                  No |      4,116       80.20      100.00
+---------------------+-----------------------------------
+               Total |      5,132      100.00
+
+. replace cvvuln = 0 if cvvuln == -1 | cvvuln == 2 
+(4,931 real changes made)
+
+. tab cvvuln
+
+       Have you been |
+contacted by the NHS |
+      or your GP and |
+advised that you are |
+           vulnerabl |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+                   0 |      4,931       96.08       96.08
+                 Yes |        201        3.92      100.00
+---------------------+-----------------------------------
+               Total |      5,132      100.00
+
+. 
+. *living alone
+. mvdecode cvnump,mv(-9/-1)
+      cvnump: 19 missing values generated
+
+. tab cvnump
+
+      How many |
+        people |
+    (including |
+      you) are |
+     currently |
+ living in the |
+ residence you |
+        are st |      Freq.     Percent        Cum.
+---------------+-----------------------------------
+             1 |      1,350       26.39       26.39
+             2 |      2,969       58.04       84.44
+             3 |        521       10.19       94.62
+             4 |        190        3.71       98.34
+             5 |         57        1.11       99.45
+             6 |         22        0.43       99.88
+             7 |          4        0.08       99.96
+             8 |          1        0.02       99.98
+             9 |          1        0.02      100.00
+---------------+-----------------------------------
+         Total |      5,115      100.00
+
+. gen cvalone = (cvnump<2) if cvnump !=.
+(19 missing values generated)
+
+. tab1 cvalone
+
+-> tabulation of cvalone  
+
+    cvalone |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |      3,765       73.61       73.61
+          1 |      1,350       26.39      100.00
+------------+-----------------------------------
+      Total |      5,115      100.00
+
+. 
+. keep idauniq cesd_bincovid2 cov19lwgtw2b cov_w11 heill cvvuln cvalone sex age_arch ethnicity_arch 
+
+. save "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid2.dta", replace
+file C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid2.dta saved
+
+. 
+. ****************************************************************************************.
+. *Put the 3 datasets together for longitudinal analysis.
+. *Our analytical sample: condition on having a positive weight at COVID wave 2 (N=5,134)
+. *****************************************************************************************.
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid2.dta", clear
+
+. summ cov19lwgtw2b
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+cov19lwgtw2b |      5,134    .9997209    .8326722   .1025807   9.489346
+
+. sort idauniq
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_w9.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         2,587
+        from master                     1,172  (_merge==1)
+        from using                      1,415  (_merge==2)
+
+    Matched                             3,962  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(1,415 observations deleted)
+
+. drop _m
+
+. merge 1:1 idauniq using "C:\Users\rmjdshc\OneDrive - University College London\Temp_ELSA_covid1.dta"
+(label clbl already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                           705
+        from master                        21  (_merge==1)
+        from using                        684  (_merge==2)
+
+    Matched                             5,113  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(684 observations deleted)
+
+. drop _m
+
+. count
+  5,134
+
+. 
+. misstable summarize cesd_binw9 cesd_bincovid1 cesd_bincovid2   // depression 
+                                                               Obs<.
+                                                +------------------------------
+               |                                | Unique
+      Variable |     Obs=.     Obs>.     Obs<.  | values        Min         Max
+  -------------+--------------------------------+------------------------------
+    cesd_binw9 |     1,197               3,937  |      2          0           1
+  cesd_binco~1 |     4,094               1,040  |      2          0           1
+  cesd_binco~2 |        54               5,080  |      2          0           1
+  -----------------------------------------------------------------------------
+
+. misstable summarize covcase1  // exposure
+                                                               Obs<.
+                                                +------------------------------
+               |                                | Unique
+      Variable |     Obs=.     Obs>.     Obs<.  | values        Min         Max
+  -------------+--------------------------------+------------------------------
+      covcase1 |        21               5,113  |      2          0           1
+  -----------------------------------------------------------------------------
+
+. misstable summarize cvvulnb heill cov_w11 cvalone // confounders
+                                                               Obs<.
+                                                +------------------------------
+               |                                | Unique
+      Variable |     Obs=.     Obs>.     Obs<.  | values        Min         Max
+  -------------+--------------------------------+------------------------------
+       cvvulnb |         2               5,132  |      2          0           1
+         heill |         2               5,132  |      2          0           1
+       cvalone |        19               5,115  |      2          0           1
+  -----------------------------------------------------------------------------
+
+. 
+. ****************************************
+. *Regression approach 1:
+. *Multiple imputation and estimation.
+. ***************************************
+. 
+. *Estimates combined using Rubin rules (pooled estimates across 20 imputed datasets).
+. *weighted using survey weight.
+. *Outcome (cesd_bincovid2)
+. *Exposure (probable infection at COVID wave 1): covcase1
+. 
+. *Models adjusted for 8 variables: 
+. *pre-COVID-19 outcome (cesd_binw9)
+. *Nov-Dec 2020 COVID-19 infection (cov_w11) 
+. *whether living alone (cvalone)
+. *whether vulnerable to COVID-19 (cvvulnb)
+. *limiting long-standing illness (heill)
+. *sex (sex) 
+. *age (age_arch)
+. *ethnicity (ethnicity_arch)
+. 
+. *not adjusting for COVID 1 outcome here (cesd_bincovid1).
+. 
+. set seed 1234543
+
+. mi set mlong
+
+. mi register imputed cesd_binw9 cesd_bincovid2 covcase1 cvvulnb heill cvalone                                                                                                  
+>   // variables to impute
+(1279 m=0 obs now marked as incomplete)
+
+. mi svyset [pw=cov19lwgtw2b], psu(idauniq)
+
+Sampling weights: cov19lwgtw2b
+             VCE: linearized
+     Single unit: missing
+        Strata 1: <one>
+ Sampling unit 1: idauniq
+           FPC 1: <zero>
+
+. mi impute chain (logit) cesd_binw9 cesd_bincovid2 covcase1 cvvulnb heill cvalone = sex age_arch ethnicity_arch cov19lwgtw2b, add(2)     // imputation model
+
+Conditional models:
+           cvvulnb: logit cvvulnb i.heill i.cvalone i.covcase1 i.cesd_bincovid2 i.cesd_binw9 sex age_arch ethnicity_arch cov19lwgtw2b
+             heill: logit heill i.cvvulnb i.cvalone i.covcase1 i.cesd_bincovid2 i.cesd_binw9 sex age_arch ethnicity_arch cov19lwgtw2b
+           cvalone: logit cvalone i.cvvulnb i.heill i.covcase1 i.cesd_bincovid2 i.cesd_binw9 sex age_arch ethnicity_arch cov19lwgtw2b
+          covcase1: logit covcase1 i.cvvulnb i.heill i.cvalone i.cesd_bincovid2 i.cesd_binw9 sex age_arch ethnicity_arch cov19lwgtw2b
+    cesd_bincovid2: logit cesd_bincovid2 i.cvvulnb i.heill i.cvalone i.covcase1 i.cesd_binw9 sex age_arch ethnicity_arch cov19lwgtw2b
+        cesd_binw9: logit cesd_binw9 i.cvvulnb i.heill i.cvalone i.covcase1 i.cesd_bincovid2 sex age_arch ethnicity_arch cov19lwgtw2b
+
+Performing chained iterations ...
+
+Multivariate imputation                     Imputations =        2
+Chained equations                                 added =        2
+Imputed: m=1 through m=2                        updated =        0
+
+Initialization: monotone                     Iterations =       20
+                                                burn-in =       10
+
+        cesd_binw9: logistic regression
+    cesd_bincovid2: logistic regression
+          covcase1: logistic regression
+           cvvulnb: logistic regression
+             heill: logistic regression
+           cvalone: logistic regression
+
+------------------------------------------------------------------
+                   |               Observations per m             
+                   |----------------------------------------------
+          Variable |   Complete   Incomplete   Imputed |     Total
+-------------------+-----------------------------------+----------
+        cesd_binw9 |       3937         1197      1197 |      5134
+    cesd_bincovid2 |       5080           54        54 |      5134
+          covcase1 |       5113           21        21 |      5134
+           cvvulnb |       5132            2         2 |      5134
+             heill |       5132            2         2 |      5134
+           cvalone |       5115           19        19 |      5134
+------------------------------------------------------------------
+(Complete + Incomplete = Total; Imputed is the minimum across m
+ of the number of filled-in observations.)
+
+. mi estimate, or: svy: logit cesd_bincovid2 i.covcase1 cesd_binw9 cov_w11 cvalone cvvulnb heill sex age_arch ethnicity_arch                // estimate and combine across datas
+> ets using Rubins rules
+
+Multiple-imputation estimates                   Imputations       =          2
+Survey: Logistic regression                     Number of obs     =      5,134
+
+Number of strata  =         1                   Population size   = 5,132.5671
+Number of PSUs    =     5,134
+                                                Average RVI       =     0.2642
+                                                Largest FMI       =     0.5978
+                                                Complete DF       =       5133
+DF adjustment:   Small sample                   DF:     min       =       4.75
+                                                        avg       =     533.65
+                                                        max       =   4,098.76
+Model F test:       Equal FMI                   F(   9,   69.5)   =      35.95
+Within VCE type:   Linearized                   Prob > F          =     0.0000
+
+--------------------------------------------------------------------------------
+cesd_bincovid2 | Odds ratio   Std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+    1.covcase1 |   1.472421   .2257492     2.52   0.012     1.090156    1.988728
+    cesd_binw9 |    5.49056   .7664912    12.20   0.000     4.068252    7.410125
+       cov_w11 |   1.502064    .567812     1.08   0.282     .7147222    3.156744
+       cvalone |   1.467608   .1650161     3.41   0.002     1.168121    1.843879
+       cvvulnb |   1.241848    .267793     1.00   0.316     .8123504    1.898426
+         heill |   2.162041   .2220212     7.51   0.000     1.749038    2.672567
+           sex |   1.691777   .1733468     5.13   0.000     1.377173    2.078251
+      age_arch |   .9855612   .0061387    -2.34   0.067     .9698819    1.001494
+ethnicity_arch |   1.365993   .4223358     1.01   0.362     .6093268    3.062292
+         _cons |   .1274224   .0596015    -4.40   0.000     .0507644    .3198397
+--------------------------------------------------------------------------------
+Note: _cons estimates baseline odds.
+
+. *OR = 1.47; (95% CI: 1.09; 1.99)
+. 
+. **********************************
+. *FINISHED 
+. **********************************
+. 
+. log close
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\Example 2.log
+  log type:  text
+ closed on:   7 Sep 2024, 10:34:20
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
