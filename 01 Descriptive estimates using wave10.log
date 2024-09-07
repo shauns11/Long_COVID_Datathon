@@ -1,0 +1,926 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\GitHub\01 Descriptive estimates using wave10.log
+  log type:  text
+ opened on:   7 Sep 2024, 11:58:12
+
+. do "C:\Users\rmjdshc\AppData\Local\Temp\STD48d4_000000.tmp"
+
+. ******************************************************************************************
+. *UEA Long COVID Datathon (9//9/2024)
+. *Descriptive estimates presented in Lecture: estimates of COVID data collected at wave 10.
+. *Shaun Scholes (UCL).
+. *******************************************************************************************
+. 
+. *Datasets required:
+. *SN 8688: COVID sub-study wave 1 (elsa_covid_w1_eulv2.dta)
+. *SN 8688: COVID sub-study wave 2 (elsa_covid_w2_eulv2.dta)
+. *SN 5050: ELSA Wave 10 interview data (wave_10_elsa_data_eul_v3)
+. *merge together using -idauniq-.
+. 
+. *From the COVID sub-study, use the variables giving test results.
+. *CvTest "Have you been tested for coronavirus (Covid-19)?"
+. *CvTestB "What was the result of your coronavirus (Covid-19) test?"
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w1_eulv2.dta", clear
+
+. keep idauniq CvTestB
+
+. tab1 CvTestB // result of test 
+
+-> tabulation of CvTestB  
+
+           Result of |
+    coronavirus test |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+          Don't know |          3        0.04        0.04
+      Not applicable |      6,641       94.33       94.38
+     It was positive |         23        0.33       94.70
+     It was negative |        326        4.63       99.33
+        Inconclusive |         13        0.18       99.52
+ Waiting for results |         34        0.48      100.00
+---------------------+-----------------------------------
+               Total |      7,040      100.00
+
+. rename CvTestB cvTest1
+
+. sort idauniq
+
+. save "N:\Temp\Temp1.dta", replace
+file N:\Temp\Temp1.dta saved
+
+. 
+. use "C:\Users\rmjdshc\OneDrive - University College London\ELSA\UKDS\Covid-8688\stata\elsa_covid_w2_eulv2.dta", clear
+
+. keep idauniq CvTestB
+
+. tab1 CvTestB // result of test
+
+-> tabulation of CvTestB  
+
+ What was the result |
+ of your coronavirus |
+    (COVID-19) test? |      Freq.     Percent        Cum.
+---------------------+-----------------------------------
+Prefer not to answer |          2        0.03        0.03
+          Don't know |          3        0.04        0.07
+      Not applicable |      5,124       75.42       75.49
+            Positive |         92        1.35       76.85
+            Negative |      1,512       22.25       99.10
+        Inconclusive |         18        0.26       99.37
+ Waiting for results |         43        0.63      100.00
+---------------------+-----------------------------------
+               Total |      6,794      100.00
+
+. rename CvTestB cvTest2
+
+. sort idauniq
+
+. save "N:\Temp\Temp2.dta", replace
+file N:\Temp\Temp2.dta saved
+
+. 
+. 
+. *Wave 10 data (n=7589).
+. clear
+
+. use "S:\FPHS_EPH_ELSA_Shared\W10\August 2024\UKDA-5050-stata\stata\stata13_se\wave_10_elsa_data_eul_v3.dta"
+
+. count
+  7,589
+
+. tab1 mode 
+
+-> tabulation of mode  
+
+Interview Mode |      Freq.     Percent        Cum.
+---------------+-----------------------------------
+          CAVI |      1,576       20.77       20.77
+           F2F |      5,881       77.49       98.26
+          CATI |        132        1.74      100.00
+---------------+-----------------------------------
+         Total |      7,589      100.00
+
+. 
+. *merge in the results of tests from the COVID sub-study.
+. sort idauniq
+
+. merge 1:1 idauniq using "N:\Temp\Temp1.dta", keepusing(cvTest1)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         4,257
+        from master                     2,403  (_merge==1)
+        from using                      1,854  (_merge==2)
+
+    Matched                             5,186  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(1,854 observations deleted)
+
+. drop _m
+
+. merge 1:1 idauniq using "N:\Temp\Temp2.dta", keepusing(cvTest2)
+(label CvTestB already defined)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                         4,139
+        from master                     2,467  (_merge==1)
+        from using                      1,672  (_merge==2)
+
+    Matched                             5,122  (_merge==3)
+    -----------------------------------------
+
+. drop if _m==2
+(1,672 observations deleted)
+
+. drop _m
+
+. count
+  7,589
+
+. 
+. *******************************************************************
+. *Analytical sample (n=6041): 
+. *(i) non-proxies; 
+. *(ii) cross-sectional weight (ELSA core members aged 50+.
+. ******************************************************************.
+. 
+. drop if askpx==1
+(378 observations deleted)
+
+. keep if w10xwgt>0 & !missing(w10xwgt)
+(1,170 observations deleted)
+
+. tab1 corepartner
+
+-> tabulation of corepartner  
+
+ Whether a Cohort |
+Member or Partner |      Freq.     Percent        Cum.
+------------------+-----------------------------------
+      Core Member |      6,041      100.00      100.00
+------------------+-----------------------------------
+            Total |      6,041      100.00
+
+. 
+. *survey characteristics: just interested in estimates here.
+. svyset [pweight=w10xwgt]
+
+Sampling weights: w10xwgt
+             VCE: linearized
+     Single unit: missing
+        Strata 1: <one>
+ Sampling unit 1: <observations>
+           FPC 1: <zero>
+
+. 
+. *Wave 10 variables:
+. *hecvtsta                 // any test
+. *hecvtstb                 // result of test
+. *hecvconf                 // whether confirms previous
+. *hecvsym                  // any symptoms when have COVID
+. *hecvsyme                 // respondent experience
+. *hecvlong                 // any long-standing illness/disability
+. *hecvlconfa-hecvlconot   // new diagnosed conditions linked to COVID-19
+. *hecvllim                // whether limits activities in any way
+. *hecvvac                 // booster vaccine 
+. 
+. 
+. **********************************************
+. *1. % having a COVID test (Denominator: all)
+. ***********************************************
+. 
+. tab hecvtsta
+
+ Whether respondent had |
+   any kind of COVID-19 |
+                   test |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+             Don't know |          3        0.05        0.05
+         Not applicable |         56        0.93        0.98
+                    Yes |      5,338       88.36       89.34
+                     No |        644       10.66      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. count if (hecvtsta==-1)  //[(IFFW[spno].CvTestB <> 1)]: 56 not applicable (positive test in substudy.
+  56
+
+. count if (cvTest1==1)|(cvTest2==1)
+  56
+
+. 
+. clonevar anytest=hecvtsta
+
+. replace anytest=1 if (cvTest1==1)|(cvTest2==1)
+(56 real changes made)
+
+. tab1 anytest
+
+-> tabulation of anytest  
+
+ Whether respondent had |
+   any kind of COVID-19 |
+                   test |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+             Don't know |          3        0.05        0.05
+                    Yes |      5,394       89.29       89.34
+                     No |        644       10.66      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. mvdecode anytest,mv(-9/-1)  // set to missing
+     anytest: 3 missing values generated
+
+. tab1 anytest
+
+-> tabulation of anytest  
+
+ Whether respondent had |
+   any kind of COVID-19 |
+                   test |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+                    Yes |      5,394       89.33       89.33
+                     No |        644       10.67      100.00
+------------------------+-----------------------------------
+                  Total |      6,038      100.00
+
+. svy:tab anytest
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      6,038
+Number of PSUs   = 6,038                          Population size = 6,007.4032
+                                                  Design df       =      6,037
+
+----------------------
+Whether   |
+responden |
+t had any |
+kind of   |
+COVID-19  |
+test      | proportion
+----------+-----------
+      Yes |      .8989
+       No |      .1011
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. ******************************************************************
+. *2. % having a +ve test (Denominator: those having a COVID test)
+. ******************************************************************
+. 
+. tab1 hecvtstb  // result of test
+
+-> tabulation of hecvtstb  
+
+   COVID-19 test result |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+         Not applicable |        703       11.64       11.64
+               Positive |      1,803       29.85       41.48
+               Negative |      3,513       58.15       99.64
+           Inconclusive |         18        0.30       99.93
+    Waiting for results |          4        0.07      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. count if hecvtstb==-1
+  703
+
+. count if inlist(hecvtsta,-8,2)|((cvTest1==1)|(cvTest2==1))
+  703
+
+. 
+. clonevar result=hecvtstb
+
+. replace result=1 if ((cvTest1==1)|(cvTest2==1))  // positive test in substudy
+(56 real changes made)
+
+. mvdecode result,mv(-9/-1,3,4)                    // set to missing
+      result: 669 missing values generated
+
+. tab result
+
+   COVID-19 test result |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+               Positive |      1,859       34.61       34.61
+               Negative |      3,513       65.39      100.00
+------------------------+-----------------------------------
+                  Total |      5,372      100.00
+
+. svy:tab result
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      5,372
+Number of PSUs   = 5,372                          Population size = 5,376.5461
+                                                  Design df       =      5,371
+
+----------------------
+COVID-19  |
+test      |
+result    | proportion
+----------+-----------
+ Positive |      .3753
+ Negative |      .6247
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. *************************************************************************************************************
+. *3. % having any symptoms (Denominator: those having a +ve test)
+. *IF confirmed that had COVID in COVID surveys or had a positive test since│ [HeCVtstb = 1 or HECvconf=1]
+. **************************************************************************************************************
+. 
+. tab1 hecvsym  // any symptoms when have COVID (1857)
+
+-> tabulation of hecvsym  
+
+        Whether had any |
+          symptoms when |
+respondent had COVID-19 |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+             Don't know |          4        0.07        0.07
+         Not applicable |      4,184       69.26       69.33
+                    Yes |      1,593       26.37       95.70
+                     No |        260        4.30      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. count if (hecvsym!=-1)                             // valid cases 
+  1,857
+
+. count if (hecvtstb==1)|(hecvconf==1)
+  1,857
+
+. 
+. clonevar symptoms=hecvsym
+
+. mvdecode symptoms,mv(-9/-1)          // set to missing
+    symptoms: 4188 missing values generated
+
+. tab symptoms
+
+        Whether had any |
+          symptoms when |
+respondent had COVID-19 |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+                    Yes |      1,593       85.97       85.97
+                     No |        260       14.03      100.00
+------------------------+-----------------------------------
+                  Total |      1,853      100.00
+
+. svy:tab symptoms
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      1,853
+Number of PSUs   = 1,853                          Population size = 2,011.1259
+                                                  Design df       =      1,852
+
+----------------------
+Whether   |
+had any   |
+symptoms  |
+when      |
+responden |
+t had     |
+COVID-19  | proportion
+----------+-----------
+      Yes |      .8528
+       No |      .1472
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. 
+. *********************************************************************************.
+. *4. % having symptoms at least 4 weeks (Denominator: those having any symptoms)
+. *IF confirmed that had symptoms│ [HECvSym = 1]
+. *********************************************************************************.
+. 
+. count if hecvsyme!=-1
+  1,593
+
+. count if hecvsym==1
+  1,593
+
+. tab1 hecvsyme if hecvsym==1  
+
+-> tabulation of hecvsyme if hecvsym==1 
+
+      Respondent experience of COVID-19 |
+                               symptoms |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+                             Don't know |          8        0.50        0.50
+Symptoms were worse at the beginning (t |        973       61.08       61.58
+Symptoms were worse at the beginning (t |        316       19.84       81.42
+After the first 1-2 weeks, symptoms got |         41        2.57       83.99
+After the first 1-2 weeks, symptoms got |         39        2.45       86.44
+  Most of symptoms lasted for 2-3 weeks |        110        6.91       93.35
+ Most of symptoms lasted for 4-12 weeks |         62        3.89       97.24
+Most of symptoms lasted for more than 1 |         29        1.82       99.06
+SPONTANEOUS: Had COVID very recently so |         15        0.94      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      1,593      100.00
+
+. 
+. clonevar exp_symptoms=hecvsyme
+
+. mvdecode exp_symptoms,mv(-8/-1,8)   // spontaneous (n=15) set to missing
+exp_symptoms: 4471 missing values generated
+
+. tab exp_symptoms
+
+      Respondent experience of COVID-19 |
+                               symptoms |      Freq.     Percent        Cum.
+----------------------------------------+-----------------------------------
+Symptoms were worse at the beginning (t |        973       61.97       61.97
+Symptoms were worse at the beginning (t |        316       20.13       82.10
+After the first 1-2 weeks, symptoms got |         41        2.61       84.71
+After the first 1-2 weeks, symptoms got |         39        2.48       87.20
+  Most of symptoms lasted for 2-3 weeks |        110        7.01       94.20
+ Most of symptoms lasted for 4-12 weeks |         62        3.95       98.15
+Most of symptoms lasted for more than 1 |         29        1.85      100.00
+----------------------------------------+-----------------------------------
+                                  Total |      1,570      100.00
+
+. svy:tab exp_symptoms                // 4+ weeks = last 2 categories
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      1,570
+Number of PSUs   = 1,570                          Population size = 1,689.2132
+                                                  Design df       =      1,569
+
+----------------------
+Responden |
+t         |
+experienc |
+e of      |
+COVID-19  |
+symptoms  | proportion
+----------+-----------
+ Symptoms |      .5962
+ Symptoms |      .1996
+ After th |      .0273
+ After th |      .0302
+  Most of |      .0758
+  Most of |      .0459
+  Most of |       .025
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. di (.0459 + .025)
+.0709
+
+. 
+. ***********************************************************************
+. *5. % diagnosed long-standing illness due to COVID (Denominator: all)
+. ***********************************************************************
+. 
+. tab1 hecvlong  // any long-standing illness/disability due to covid
+
+-> tabulation of hecvlong  
+
+ Whether told by doctor |
+          that have any |
+  long-standing illness |
+  or disbility caused b |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+             Don't know |         77        1.27        1.27
+                    Yes |         95        1.57        2.85
+                     No |      5,869       97.15      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. 
+. clonevar covid_LSI=hecvlong
+
+. mvdecode covid_LSI,mv(-8)                        // set to missing
+   covid_LSI: 77 missing values generated
+
+. tab covid_LSI
+
+ Whether told by doctor |
+          that have any |
+  long-standing illness |
+  or disbility caused b |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+                    Yes |         95        1.59        1.59
+                     No |      5,869       98.41      100.00
+------------------------+-----------------------------------
+                  Total |      5,964      100.00
+
+. svy:tab covid_LSI 
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      5,964
+Number of PSUs   = 5,964                          Population size = 5,940.3785
+                                                  Design df       =      5,963
+
+----------------------
+Whether   |
+told by   |
+doctor    |
+that have |
+any       |
+long-stan |
+ding      |
+illness   |
+or        |
+disbility |
+caused b  | proportion
+----------+-----------
+      Yes |      .0206
+       No |      .9794
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. *********************************************************************************************************************************
+. *6. % with new diagnosed conditions linked to COVID (Denominator: those with any long-standing illness/disability due to covid)
+. *********************************************************************************************************************************
+. 
+. count if hecvlconfa!=-1  // [(HECvLong=1)]
+  95
+
+. tab1 hecvlconfa-hecvlconot if hecvlong==1    // new diagnosed conditions linked to COVID-19
+
+-> tabulation of hecvlconfa if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+                Fatigue |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         42       44.21       44.21
+              Mentioned |         53       55.79      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconbc if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Blood clot in t |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         90       94.74       94.74
+              Mentioned |          5        5.26      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconcg if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+                  Cough |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         66       69.47       69.47
+              Mentioned |         29       30.53      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconsb if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Shortness of br |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         49       51.58       51.58
+              Mentioned |         46       48.42      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconct if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Chest tightness |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         77       81.05       81.05
+              Mentioned |         18       18.95      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconlc if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+         Lung condition |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         86       90.53       90.53
+              Mentioned |          9        9.47      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconls if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Loss of sense o |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         72       75.79       75.79
+              Mentioned |         23       24.21      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlcondc if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Difficulty conc |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         74       77.89       77.89
+              Mentioned |         21       22.11      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconbf if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+              Brain fog |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         59       62.11       62.11
+              Mentioned |         36       37.89      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconhd if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+              Headaches |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         77       81.05       81.05
+              Mentioned |         18       18.95      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconde if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Depression and  |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         79       83.16       83.16
+              Mentioned |         16       16.84      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconhc if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Heart condition |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         91       95.79       95.79
+              Mentioned |          4        4.21      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconmb if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Another conditi |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         92       96.84       96.84
+              Mentioned |          3        3.16      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconns if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+        Condition affec |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         93       97.89       97.89
+              Mentioned |          2        2.11      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconjp if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+            Joint pains |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         71       74.74       74.74
+              Mentioned |         24       25.26      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlcondh if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+              Diarrhoea |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         91       95.79       95.79
+              Mentioned |          4        4.21      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+-> tabulation of hecvlconot if hecvlong==1 
+
+New diagnosed condition |
+   illness or disbility |
+    linked to COVID-19: |
+                  Other |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+          Not mentioned |         78       82.11       82.11
+              Mentioned |         17       17.89      100.00
+------------------------+-----------------------------------
+                  Total |         95      100.00
+
+. 
+. foreach var of varlist hecvlconfa hecvlconcg hecvlconsb  {
+  2. svy:tab `var' if hecvlong==1 
+  3. }
+(running tabulate on estimation sample)
+
+Number of strata =  1                             Number of obs   =         95
+Number of PSUs   = 95                             Population size = 122.454748
+                                                  Design df       =         94
+
+----------------------
+New       |
+diagnosed |
+condition |
+illness   |
+or        |
+disbility |
+linked to |
+COVID-19: |
+Fatigue   | proportion
+----------+-----------
+ Not ment |      .4727
+ Mentione |      .5273
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+(running tabulate on estimation sample)
+
+Number of strata =  1                             Number of obs   =         95
+Number of PSUs   = 95                             Population size = 122.454748
+                                                  Design df       =         94
+
+----------------------
+New       |
+diagnosed |
+condition |
+illness   |
+or        |
+disbility |
+linked to |
+COVID-19: |
+Cough     | proportion
+----------+-----------
+ Not ment |      .7332
+ Mentione |      .2668
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+(running tabulate on estimation sample)
+
+Number of strata =  1                             Number of obs   =         95
+Number of PSUs   = 95                             Population size = 122.454748
+                                                  Design df       =         94
+
+----------------------
+New       |
+diagnosed |
+condition |
+illness   |
+or        |
+disbility |
+linked to |
+COVID-19: |
+Shortness |
+of br     | proportion
+----------+-----------
+ Not ment |      .4435
+ Mentione |      .5565
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. ***************************************************
+. *7. % received booster vaccine (Denominator: all)
+. ***************************************************
+. 
+. tab1 hecvbvac 
+
+-> tabulation of hecvbvac  
+
+     Whether respondent |
+     received a booster |
+   vaccine for COVID-19 |      Freq.     Percent        Cum.
+------------------------+-----------------------------------
+                Refused |          2        0.03        0.03
+             Don't know |        495        8.19        8.23
+         Not applicable |        131        2.17       10.40
+                    Yes |      5,129       84.90       95.30
+                     No |        284        4.70      100.00
+------------------------+-----------------------------------
+                  Total |      6,041      100.00
+
+. tab1 hecvvac 
+
+-> tabulation of hecvvac  
+
+ Whether respondent has been offered a |
+                  vaccine for COVID-19 |      Freq.     Percent        Cum.
+---------------------------------------+-----------------------------------
+                               Refused |          1        0.02        0.02
+              Yes, has been vaccinated |      5,910       97.83       97.85
+     Yes, but waiting to be vaccinated |         10        0.17       98.01
+ Yes, but decided not to be vaccinated |        104        1.72       99.74
+No, has not been offered a vaccination |         16        0.26      100.00
+---------------------------------------+-----------------------------------
+                                 Total |      6,041      100.00
+
+. *131 not applicable for hecvbvac  (not vaccinated): set these to not having received a booster vaccine
+. 
+. 
+. generate booster=-2
+
+. replace booster=. if inlist(hecvbvac,-8,-9)|inlist(hecvvac,-9)    // set to missing
+(498 real changes made, 498 to missing)
+
+. replace booster=0 if inlist(hecvvac,2,3,4)                        // not vaccinated
+(130 real changes made)
+
+. replace booster=0 if inlist(hecvbvac,2)                           // vaccinated, but no booster
+(284 real changes made)
+
+. replace booster=1 if inlist(hecvbvac,1)                           // vaccinated, received booster
+(5,129 real changes made)
+
+. tab1 booster
+
+-> tabulation of booster  
+
+    booster |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          0 |        414        7.47        7.47
+          1 |      5,129       92.53      100.00
+------------+-----------------------------------
+      Total |      5,543      100.00
+
+. svy:tab booster
+(running tabulate on estimation sample)
+
+Number of strata =     1                          Number of obs   =      5,543
+Number of PSUs   = 5,543                          Population size = 5,578.6277
+                                                  Design df       =      5,542
+
+----------------------
+  booster | proportion
+----------+-----------
+        0 |      .0922
+        1 |      .9078
+          | 
+    Total |          1
+----------------------
+Key: proportion = Cell proportion
+
+. 
+. log close
+      name:  <unnamed>
+       log:  C:\Users\rmjdshc\OneDrive - University College London\Desktop\ELSA and COVID\GitHub\01 Descriptive estimates using wave10.log
+  log type:  text
+ closed on:   7 Sep 2024, 11:58:57
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
