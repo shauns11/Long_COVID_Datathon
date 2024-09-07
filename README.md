@@ -2,9 +2,9 @@
 Statistical code to support the UEA Long COVID Datathon (9/9/2024).
 
 ### Descriptive estimates (Wave 10 data)
-Estimates from Wave10Data,log
-Estimates from Wave10Data.do
-Estimates from Wave10Data.R
+- Estimates from Wave10Data,log
+- Estimates from Wave10Data.do
+- Estimates from Wave10Data.R
 
 ### Example 1 (Growth models)
 - Example 1 (Growth models).R
